@@ -7,7 +7,6 @@
 
 <!-- Turf.js (operaciones geométricas en el cliente) -->
 <script src="https://unpkg.com/@turf/turf@6/turf.min.js"></script>
-
 <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
@@ -19,14 +18,11 @@
 
 <div class="app-layout">
 
-  <!-- ======================= SIDEBAR ======================= -->
   <aside class="sidebar">
 
-    <!-- 1. Selección de UT -->
     <section class="panel">
       <h2>1. Seleccionar Unidad Territorial</h2>
-      <input list="ut-list" id="ut-search" placeholder="Escribe clave o nombre de la UT…" autocomplete="off">
-      <datalist id="ut-list"></datalist>
+      <input type="text" id="ut-search" placeholder="Escribe la clave de la UT (ej. 05-030)…" autocomplete="off">
       <button id="btn-cargar-ut" class="btn btn-primary" disabled>Cargar UT en el mapa</button>
       <label class="checkbox-row">
         <input type="checkbox" id="chk-referencia">
@@ -34,7 +30,6 @@
       </label>
     </section>
 
-    <!-- 2. Edición de límites -->
     <section class="panel">
       <h2>2. Editar propuesta de límite</h2>
       <p class="hint">Carga la UT primero. El polígono azul es editable: arrastra sus vértices para proponer el nuevo límite.</p>
@@ -43,7 +38,6 @@
       <div id="zona-afectada-info" class="info-box hidden"></div>
     </section>
 
-    <!-- 3. Clasificación del caso -->
     <section class="panel">
       <h2>3. Clasificar el caso</h2>
       <label for="sel-tipo-caso">Tipo de caso</label>
@@ -58,7 +52,6 @@
       <div id="modelo-sugerido" class="info-box hidden"></div>
     </section>
 
-    <!-- 4. Parámetros de muestreo (avanzado) -->
     <details class="panel">
       <summary><h2 style="display:inline">4. Parámetros de muestreo</h2></summary>
       <div class="param-grid">
@@ -70,13 +63,11 @@
       </div>
     </details>
 
-    <!-- 5. Analizar -->
     <section class="panel">
       <button id="btn-analizar" class="btn btn-primary btn-large" disabled>Analizar y calcular muestra</button>
       <div id="analizar-status" class="status-line"></div>
     </section>
 
-    <!-- 6. Resultados -->
     <section class="panel" id="panel-resultados" hidden>
       <h2>Resultados</h2>
       <div class="result-summary" id="result-summary"></div>
@@ -102,7 +93,6 @@
 
   </aside>
 
-  <!-- ======================= MAPA ======================= -->
   <main class="map-wrap">
     <div id="map"></div>
     <div class="legend">
