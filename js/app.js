@@ -308,7 +308,7 @@ async function analizar() {
     let nManzanas = 0;
 
     manzanasResp.features.forEach((f) => {
-      const ln = Number(f.properties.LN) || 0;
+      const ln = Number(f.properties.ln) || 0;
       const pct =
         (f.properties.porcentaje_afectado ?? 100) / 100;
       nManzanas += ln * pct;
@@ -317,7 +317,7 @@ async function analizar() {
     let nLocalidades = 0;
 
     localidadResp.features.forEach((f) => {
-      nLocalidades += Number(f.properties.LN) || 0;
+      nLocalidades += Number(f.properties.ln) || 0;
     });
 
     const N = nManzanas + nLocalidades;
@@ -419,7 +419,7 @@ function renderResultados({
 
   state.manzanasResult.features.forEach((f) => {
     const p = f.properties;
-    const ln = Number(p.LN) || 0;
+    const ln = Number(p.ln) || 0;
     const pct = p.porcentaje_afectado ?? 100;
     const ponderada = ln * (pct / 100);
 
@@ -444,7 +444,7 @@ function renderResultados({
     tr.innerHTML =
       `<td>${p.localidad ?? '-'}</td>` +
       `<td>${p.seccion ?? '-'}</td>` +
-      `<td>${Number(p.LN) || 0}</td>`;
+      `<td>${Number(p.ln) || 0}</td>`;
 
     tbodyLocalidades.appendChild(tr);
   });
@@ -455,12 +455,12 @@ function exportarCSV() {
 
   const lines = [];
   lines.push(
-    'tipo,identificador,seccion,LN,porcentaje_afectado,LN_ponderada'
+    'tipo,identificador,seccion,ln,porcentaje_afectado,ln_ponderada'
   );
 
   (state.manzanasResult?.features || []).forEach((f) => {
     const p = f.properties;
-    const ln = Number(p.LN) || 0;
+    const ln = Number(p.ln) || 0;
     const pct = p.porcentaje_afectado ?? 100;
 
     lines.push(
@@ -470,7 +470,7 @@ function exportarCSV() {
 
   (state.localidadResult?.features || []).forEach((f) => {
     const p = f.properties;
-    const ln = Number(p.LN) || 0;
+    const ln = Number(p.ln) || 0;
 
     lines.push(
       `localidad,${p.localidad ?? ''},${p.seccion ?? ''},${ln},100,${ln}`

@@ -1106,7 +1106,7 @@ class MapManager {
                 const content =
                   `<strong>Manzana ${p.manzana ?? ''}</strong><br>` +
                   `Sección: ${p.seccion ?? '-'}<br>` +
-                  `Lista Nominal: ${p.LN ?? '-'}<br>` +
+                  `Lista Nominal: ${p.ln ?? '-'}<br>` +
                   `% dentro de la zona afectada: ${pct}%`;
 
 
@@ -1191,7 +1191,7 @@ class MapManager {
             const content =
               `<strong>Localidad: ${p.localidad ?? ''}</strong><br>` +
               `Sección: ${p.seccion ?? '-'}<br>` +
-              `Lista Nominal: ${p.LN ?? '-'}`;
+              `Lista Nominal: ${p.ln ?? '-'}`;
 
 
             this.showInfoWindow(
