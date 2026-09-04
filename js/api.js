@@ -71,24 +71,11 @@ const Api = (() => {
     return handle(res);
   }
 
-
-  // ============================================================
-  // CATÁLOGO DE UT
-  // ============================================================
-  // Se utiliza únicamente para alimentar el buscador.
-  // La geometría NO se descarga aquí.
-  // ============================================================
-
-  function getAllUTs() {
-    return get(CONFIG.ENDPOINTS.utCatalogo);
-  }
-
-
   // ============================================================
   // GEOMETRÍA DE UNA UT
   // ============================================================
-  // filter_2 consulta directamente por cve_ut y devuelve
-  // únicamente la geometría/feature de esa UT.
+  // filter_2 consulta directamente la BD mediante cve_ut.
+  // Devuelve exclusivamente la geometría y propiedades de esa UT.
   // ============================================================
 
   function getUTByCve(cveUt) {
@@ -97,7 +84,6 @@ const Api = (() => {
       { cve_ut: cveUt }
     );
   }
-
 
   // ============================================================
   // SECCIONES
@@ -113,7 +99,6 @@ const Api = (() => {
     );
   }
 
-
   // ============================================================
   // CACHE DE GEOMETRÍA AFECTADA
   // ============================================================
@@ -126,7 +111,6 @@ const Api = (() => {
       ttl_minutes: CONFIG.CACHE_TTL_MINUTES
     });
   }
-
 
   // ============================================================
   // INTERSECCIÓN ESPACIAL
@@ -159,7 +143,6 @@ const Api = (() => {
     );
   }
 
-
   // ============================================================
   // MANZANAS DE REFERENCIA
   // ============================================================
@@ -174,7 +157,6 @@ const Api = (() => {
       }
     );
   }
-
 
   // ============================================================
   // MANZANAS AFECTADAS
@@ -192,7 +174,6 @@ const Api = (() => {
     );
   }
 
-
   // ============================================================
   // LOCALIDADES AFECTADAS
   // ============================================================
@@ -209,9 +190,7 @@ const Api = (() => {
     );
   }
 
-
   return {
-    getAllUTs,
     getUTByCve,
     getSeccionesDeUT,
     cacheStore,
