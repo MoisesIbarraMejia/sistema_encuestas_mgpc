@@ -5,18 +5,6 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Sistema de Cálculo de Encuestas MGPC — Modificación de Límites de UT</title>
 
-<!-- Google Maps JavaScript API -->
-<script>
-  window.googleMapsReady = false;
-  function initMap() {
-    window.googleMapsReady = true;
-    if (window.initAppMap) window.initAppMap();
-  }
-</script>
-<script async defer
-  src="https://maps.googleapis.com/maps/api/js?key=AIzaSyCw42oKA6idOiNV51RXLHzRwYwn7MerDBI&callback=initMap&v=weekly">
-</script>
-
 <!-- Turf.js (operaciones geométricas en el cliente) -->
 <script src="https://unpkg.com/@turf/turf@6/turf.min.js"></script>
 
@@ -137,5 +125,12 @@
 <script src="js/modeloEncuesta.js"></script>
 <script src="js/mapManager.js"></script>
 <script src="js/app.js"></script>
+
+<!-- Google Maps JavaScript API -->
+<script
+  async
+  src="https://maps.googleapis.com/maps/api/js?key=AIzaSyCw42oKA6idOiNV51RXLHzRwYwn7MerDBI&loading=async&callback=initMap&v=weekly">
+</script>
+
 </body>
 </html>

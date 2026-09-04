@@ -361,5 +361,12 @@ async function initAppMap() {
   await loadUTList();
 }
 
-window.initAppMap =
-  initAppMap;
+
+function initMap() {
+
+  initAppMap();
+}
+
+
+window.initMap = initMap;
+window.initAppMap = initAppMap;
