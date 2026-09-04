@@ -3,6 +3,12 @@ const CONFIG = {
   // Proxy PHP local
   API_BASE: 'api-proxy_local.php',
 
+  // Endpoints espaciales de UT
+  ENDPOINTS: {
+    utCatalogo: '/geometries/uts_mgpc',
+    utPorCve: '/filter_2/uts_mgpc'
+  },
+
   // Nombres de tablas
   TABLES: {
     uts: 'uts_mgpc',
