@@ -17,6 +17,7 @@ const CONFIG = {
     localidad: 'localidad'
   },
 
+  // Parámetros del muestreo
   SAMPLING: {
     Z: 2.58,
     p: 0.5,
@@ -25,11 +26,17 @@ const CONFIG = {
     censusThreshold: 100
   },
 
+  // Configuración del mapa
   MAP: {
     center: [19.4326, -99.1332],
     zoom: 11,
-    maxZoom: 20
+    maxZoom: 20,
+
+    // Distancia utilizada únicamente para mostrar contexto visual
+    // alrededor de la UT seleccionada.
+    referenceBufferMeters: 50
   },
 
+  // TTL de la geometría de zona afectada guardada en la API
   CACHE_TTL_MINUTES: 120
 };
