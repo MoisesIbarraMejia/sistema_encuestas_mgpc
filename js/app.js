@@ -347,10 +347,19 @@ function exportarCSV() {
 
 // ---------------- Init ----------------
 
-document.addEventListener('DOMContentLoaded', async () => {
-  mapManager = new MapManager('map');
+async function initAppMap() {
+
+  mapManager =
+    new MapManager('map');
+
   populateTipoCasoSelect();
+
   populateParamInputs();
+
   wireEvents();
+
   await loadUTList();
-});
+}
+
+window.initAppMap =
+  initAppMap;

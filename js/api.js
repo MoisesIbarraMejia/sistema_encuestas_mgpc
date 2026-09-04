@@ -4,11 +4,26 @@
 const Api = (() => {
 
   function buildUrl(path, queryParams = {}) {
-    const url = new URL(CONFIG.API_BASE.replace(/\/$/, '') + path);
-    url.searchParams.set('api_key', CONFIG.API_KEY);
+    const url = new URL(
+      CONFIG.API_BASE,
+      window.location.href
+    );
+
+    url.searchParams.set(
+      'endpoint',
+      path.replace(/^\/+/, '')
+    );
+
     Object.entries(queryParams).forEach(([k, v]) => {
-      if (v !== undefined && v !== null && v !== '') url.searchParams.set(k, v);
+      if (
+        v !== undefined &&
+        v !== null &&
+        v !== ''
+      ) {
+        url.searchParams.set(k, v);
+      }
     });
+
     return url.toString();
   }
 

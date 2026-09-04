@@ -165,3 +165,24 @@ thead th { position: sticky; top: 0; background: #f0eaf9; color: var(--purple-da
   font-size: 11.5px;
   padding: 5px 12px;
 }
+
+.map-drawing-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 10px;
+}
+
+.map-control-button {
+  background: #fff;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  padding: 8px 12px;
+  font-size: 13px;
+  cursor: pointer;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+}
+
+.map-control-button:hover {
+  background: #f4f4f4;
+}

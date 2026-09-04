@@ -1,170 +1,1352 @@
 // ============================================================
-// mapManager.js — mapa Leaflet, capas y edición del polígono
+// mapManager.js
+// Google Maps + edición de polígonos
 // ============================================================
+
 class MapManager {
+
   constructor(elementId) {
-    this.map = L.map(elementId).setView(CONFIG.MAP.center, CONFIG.MAP.zoom);
 
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: CONFIG.MAP.maxZoom,
-      attribution: '&copy; OpenStreetMap contributors'
-    }).addTo(this.map);
+    this.map = new google.maps.Map(
+      document.getElementById(elementId),
+      {
+        center: {
+          lat: CONFIG.MAP.center[0],
+          lng: CONFIG.MAP.center[1]
+        },
 
-    // Polígono original de la UT (solo lectura, referencia)
-    this.originalLayer = L.geoJSON(null, {
-      style: { color: '#4B2E83', weight: 2, dashArray: '6,4', fillOpacity: 0.05 }
-    }).addTo(this.map);
+        zoom: CONFIG.MAP.zoom,
 
-    // Copia editable (Leaflet.draw la controla)
-    this.editableGroup = new L.FeatureGroup().addTo(this.map);
+        mapTypeControl: true,
 
-    // Manzanas de referencia (contexto visual, opcional)
-    this.referenceLayer = L.geoJSON(null, {
-      style: { color: '#999999', weight: 1, fillOpacity: 0.04 }
-    }).addTo(this.map);
+        streetViewControl: false,
 
-    // Zona afectada calculada (diferencia simétrica)
-    this.affectedLayer = L.geoJSON(null, {
-      style: { color: '#C00000', weight: 2, fillColor: '#ff6b6b', fillOpacity: 0.45 }
-    }).addTo(this.map);
+        fullscreenControl: true,
 
-    // Resultado: manzanas afectadas (coloreadas por % de afectación)
-    this.manzanasResultLayer = L.geoJSON(null, {
-      style: (f) => this._styleManzanaResult(f),
-      onEachFeature: (f, layer) => this._bindManzanaPopup(f, layer)
-    }).addTo(this.map);
+        gestureHandling: 'greedy'
+      }
+    );
 
-    // Resultado: localidades (puntos) afectadas
-    this.localidadResultLayer = L.geoJSON(null, {
-      pointToLayer: (f, latlng) => L.circleMarker(latlng, {
-        radius: 7, color: '#006100', weight: 2, fillColor: '#8fd19e', fillOpacity: 0.9
-      }),
-      onEachFeature: (f, layer) => this._bindLocalidadPopup(f, layer)
-    }).addTo(this.map);
 
-    this.drawControl = null;
+    this.originalPolygons = [];
+
+    this.editablePolygons = [];
+
+    this.referenceObjects = [];
+
+    this.affectedObjects = [];
+
+    this.manzanasResultObjects = [];
+
+    this.localidadResultObjects = [];
+
+
+    this.editingEnabled = false;
+
+
+    /*
+    |--------------------------------------------------------------------------
+    | CONTROLES PROPIOS
+    |--------------------------------------------------------------------------
+    */
+
+    this.createDrawingControls();
   }
 
-  _styleManzanaResult(feature) {
-    const pct = feature.properties?.porcentaje_afectado ?? 100;
+
+  /*
+  |--------------------------------------------------------------------------
+  | CONTROLES DE DIBUJO
+  |--------------------------------------------------------------------------
+  */
+
+  createDrawingControls() {
+
+    const control =
+      document.createElement('div');
+
+    control.className =
+      'map-drawing-controls';
+
+
+    const polygonButton =
+      document.createElement('button');
+
+    polygonButton.textContent =
+      'Dibujar polígono';
+
+    polygonButton.className =
+      'map-control-button';
+
+
+    const rectangleButton =
+      document.createElement('button');
+
+    rectangleButton.textContent =
+      'Dibujar rectángulo';
+
+    rectangleButton.className =
+      'map-control-button';
+
+
+    polygonButton.addEventListener(
+      'click',
+      () => this.startPolygonDrawing()
+    );
+
+
+    rectangleButton.addEventListener(
+      'click',
+      () => this.startRectangleDrawing()
+    );
+
+
+    control.appendChild(
+      polygonButton
+    );
+
+    control.appendChild(
+      rectangleButton
+    );
+
+
+    this.map.controls[
+      google.maps.ControlPosition.TOP_RIGHT
+    ].push(control);
+  }
+
+
+  /*
+  |--------------------------------------------------------------------------
+  | DIBUJAR POLÍGONO
+  |--------------------------------------------------------------------------
+  */
+
+  startPolygonDrawing() {
+
+    this.stopDrawing();
+
+    this.drawingMode = 'polygon';
+
+    this.drawingPath = [];
+
+    this.drawingPolyline =
+      new google.maps.Polyline({
+
+        map: this.map,
+
+        path: this.drawingPath,
+
+        strokeColor: '#1565c0',
+
+        strokeOpacity: 1,
+
+        strokeWeight: 2
+      });
+
+
+    this.drawingClickListener =
+      this.map.addListener(
+        'click',
+        (event) => {
+
+          this.drawingPath.push(
+            event.latLng
+          );
+
+          this.drawingPolyline.setPath(
+            this.drawingPath
+          );
+        }
+      );
+
+
+    this.drawingDblClickListener =
+      this.map.addListener(
+        'dblclick',
+        () => this.finishPolygonDrawing()
+      );
+  }
+
+
+  finishPolygonDrawing() {
+
+    if (
+      !this.drawingPath ||
+      this.drawingPath.length < 3
+    ) {
+      this.stopDrawing();
+      return;
+    }
+
+
+    const polygon =
+      new google.maps.Polygon({
+
+        map: this.map,
+
+        paths: this.drawingPath,
+
+        strokeColor: '#1565c0',
+
+        strokeOpacity: 1,
+
+        strokeWeight: 2,
+
+        fillColor: '#cfe0fb',
+
+        fillOpacity: 0.25,
+
+        editable: true
+      });
+
+
+    this.editablePolygons.push(
+      polygon
+    );
+
+
+    this.stopDrawing();
+  }
+
+
+  /*
+  |--------------------------------------------------------------------------
+  | DIBUJAR RECTÁNGULO
+  |--------------------------------------------------------------------------
+  */
+
+  startRectangleDrawing() {
+
+    this.stopDrawing();
+
+    this.drawingMode =
+      'rectangle';
+
+
+    this.rectangle =
+      new google.maps.Rectangle({
+
+        map: this.map,
+
+        strokeColor: '#1565c0',
+
+        strokeOpacity: 1,
+
+        strokeWeight: 2,
+
+        fillColor: '#cfe0fb',
+
+        fillOpacity: 0.25,
+
+        editable: true,
+
+        draggable: false
+      });
+
+
+    this.rectangleStart =
+      null;
+
+
+    this.rectangleClickListener =
+      this.map.addListener(
+        'click',
+        (event) => {
+
+          if (!this.rectangleStart) {
+
+            this.rectangleStart =
+              event.latLng;
+
+            return;
+          }
+
+
+          const bounds =
+            new google.maps.LatLngBounds(
+              this.rectangleStart,
+              event.latLng
+            );
+
+
+          this.rectangle.setBounds(
+            bounds
+          );
+
+
+          this.stopDrawing();
+        }
+      );
+  }
+
+
+  /*
+  |--------------------------------------------------------------------------
+  | DETENER DIBUJO
+  |--------------------------------------------------------------------------
+  */
+
+  stopDrawing() {
+
+    if (
+      this.drawingClickListener
+    ) {
+
+      google.maps.event.removeListener(
+        this.drawingClickListener
+      );
+
+      this.drawingClickListener =
+        null;
+    }
+
+
+    if (
+      this.drawingDblClickListener
+    ) {
+
+      google.maps.event.removeListener(
+        this.drawingDblClickListener
+      );
+
+      this.drawingDblClickListener =
+        null;
+    }
+
+
+    if (
+      this.rectangleClickListener
+    ) {
+
+      google.maps.event.removeListener(
+        this.rectangleClickListener
+      );
+
+      this.rectangleClickListener =
+        null;
+    }
+
+
+    if (
+      this.drawingPolyline
+    ) {
+
+      this.drawingPolyline.setMap(
+        null
+      );
+
+      this.drawingPolyline =
+        null;
+    }
+
+
+    this.drawingPath =
+      null;
+
+    this.drawingMode =
+      null;
+
+    this.rectangleStart =
+      null;
+  }
+
+
+  /*
+  |--------------------------------------------------------------------------
+  | GEOJSON → GOOGLE MAPS
+  |--------------------------------------------------------------------------
+  */
+
+  geoJsonToGooglePaths(
+    geometry
+  ) {
+
+    if (
+      !geometry
+    ) {
+      return [];
+    }
+
+
+    if (
+      geometry.type ===
+      'Polygon'
+    ) {
+
+      return geometry.coordinates.map(
+        ring => ring.map(
+          coordinate => ({
+            lat: coordinate[1],
+            lng: coordinate[0]
+          })
+        )
+      );
+    }
+
+
+    if (
+      geometry.type ===
+      'MultiPolygon'
+    ) {
+
+      return geometry.coordinates.flat(
+        polygon => polygon.map(
+          ring => ring.map(
+            coordinate => ({
+              lat: coordinate[1],
+              lng: coordinate[0]
+            })
+          )
+        )
+      );
+    }
+
+
+    throw new Error(
+      'Geometría no compatible: ' +
+      geometry.type
+    );
+  }
+
+
+  /*
+  |--------------------------------------------------------------------------
+  | GOOGLE MAPS → GEOJSON
+  |--------------------------------------------------------------------------
+  */
+
+  googlePolygonToGeoJSON(
+    polygon
+  ) {
+
+    const paths = [];
+
+    polygon
+      .getPaths()
+      .forEach(
+        path => {
+
+          const ring = [];
+
+          for (
+            let i = 0;
+            i < path.getLength();
+            i++
+          ) {
+
+            const point =
+              path.getAt(i);
+
+            ring.push([
+              point.lng(),
+              point.lat()
+            ]);
+          }
+
+
+          if (
+            ring.length > 0
+          ) {
+
+            const first =
+              ring[0];
+
+            const last =
+              ring[ring.length - 1];
+
+
+            if (
+              first[0] !== last[0] ||
+              first[1] !== last[1]
+            ) {
+
+              ring.push([
+                first[0],
+                first[1]
+              ]);
+            }
+          }
+
+
+          paths.push(ring);
+        }
+      );
+
+
     return {
-      color: '#C00000',
-      weight: 1,
-      fillColor: '#ff5050',
-      fillOpacity: Math.min(0.85, Math.max(0.15, pct / 100))
+      type: 'Feature',
+
+      properties: {},
+
+      geometry: {
+        type: 'Polygon',
+        coordinates: paths
+      }
     };
   }
 
-  _bindManzanaPopup(feature, layer) {
-    const p = feature.properties || {};
-    const pct = p.porcentaje_afectado ?? 100;
-    layer.bindPopup(
-      `<strong>Manzana ${p.manzana ?? ''}</strong><br>` +
-      `Sección: ${p.seccion ?? '-'}<br>` +
-      `Lista Nominal: ${p.LN ?? '-'}<br>` +
-      `% dentro de la zona afectada: ${pct}%`
-    );
-  }
 
-  _bindLocalidadPopup(feature, layer) {
-    const p = feature.properties || {};
-    layer.bindPopup(
-      `<strong>Localidad: ${p.localidad ?? ''}</strong><br>` +
-      `Sección: ${p.seccion ?? '-'}<br>` +
-      `Lista Nominal: ${p.LN ?? '-'}`
-    );
-  }
+  /*
+  |--------------------------------------------------------------------------
+  | CARGAR UT ORIGINAL
+  |--------------------------------------------------------------------------
+  */
 
-  loadOriginalUT(feature) {
+  loadOriginalUT(
+    feature
+  ) {
+
     this.clearAll();
-    this.originalLayer.addData(feature);
-    if (this.originalLayer.getBounds().isValid()) {
-      this.map.fitBounds(this.originalLayer.getBounds(), { padding: [30, 30] });
+
+
+    const geometry =
+      feature.geometry;
+
+
+    const paths =
+      this.geoJsonToGooglePaths(
+        geometry
+      );
+
+
+    if (
+      geometry.type ===
+      'MultiPolygon'
+    ) {
+
+      paths.forEach(
+        polygonPaths => {
+
+          const polygon =
+            this.createPolygon(
+              polygonPaths,
+              {
+                strokeColor:
+                  '#4B2E83',
+
+                strokeOpacity: 1,
+
+                strokeWeight: 2,
+
+                fillColor:
+                  '#4B2E83',
+
+                fillOpacity: 0.05,
+
+                editable: false
+              }
+            );
+
+
+          this.originalPolygons.push(
+            polygon
+          );
+        }
+      );
+
+    } else {
+
+      const polygon =
+        this.createPolygon(
+          paths,
+          {
+            strokeColor:
+              '#4B2E83',
+
+            strokeOpacity: 1,
+
+            strokeWeight: 2,
+
+            fillColor:
+              '#4B2E83',
+
+            fillOpacity: 0.05,
+
+            editable: false
+          }
+        );
+
+
+      this.originalPolygons.push(
+        polygon
+      );
     }
 
-    // Copia editable independiente (deep clone para no compartir referencia)
-    const editable = JSON.parse(JSON.stringify(feature));
-    const layer = L.geoJSON(editable, {
-      style: { color: '#1565c0', weight: 2, fillOpacity: 0.08 }
-    });
-    layer.eachLayer((l) => this.editableGroup.addLayer(l));
+
+    /*
+    |--------------------------------------------------------------------------
+    | CREAR COPIA EDITABLE
+    |--------------------------------------------------------------------------
+    */
+
+    const editablePaths =
+      this.geoJsonToGooglePaths(
+        geometry
+      );
+
+
+    editablePaths.forEach(
+      polygonPaths => {
+
+        const polygon =
+          this.createPolygon(
+            polygonPaths,
+            {
+              strokeColor:
+                '#1565c0',
+
+              strokeOpacity: 1,
+
+              strokeWeight: 2,
+
+              fillColor:
+                '#cfe0fb',
+
+              fillOpacity: 0.15,
+
+              editable: false
+            }
+          );
+
+
+        this.editablePolygons.push(
+          polygon
+        );
+      }
+    );
+
+
+    /*
+    |--------------------------------------------------------------------------
+    | ZOOM
+    |--------------------------------------------------------------------------
+    */
+
+    const bounds =
+      new google.maps.LatLngBounds();
+
+
+    this.originalPolygons.forEach(
+      polygon => {
+
+        polygon
+          .getPaths()
+          .forEach(
+            path => {
+
+              path.forEach(
+                point => {
+
+                  bounds.extend(
+                    point
+                  );
+                }
+              );
+
+            }
+          );
+      }
+    );
+
+
+    if (
+      !bounds.isEmpty()
+    ) {
+
+      this.map.fitBounds(
+        bounds,
+        30
+      );
+    }
   }
+
+
+  /*
+  |--------------------------------------------------------------------------
+  | CREAR POLÍGONO
+  |--------------------------------------------------------------------------
+  */
+
+  createPolygon(
+    paths,
+    options
+  ) {
+
+    return new google.maps.Polygon({
+      map: this.map,
+
+      paths,
+
+      ...options
+    });
+  }
+
+
+  /*
+  |--------------------------------------------------------------------------
+  | EDICIÓN
+  |--------------------------------------------------------------------------
+  */
 
   enableEditing() {
-    if (this.drawControl) return;
-    this.drawControl = new L.Control.Draw({
-      position: 'topright',
-      draw: false, // no permitir dibujar polígonos nuevos, solo editar el existente
-      edit: {
-        featureGroup: this.editableGroup,
-        remove: false
+
+    this.editingEnabled =
+      true;
+
+
+    this.editablePolygons.forEach(
+      polygon => {
+
+        polygon.setEditable(
+          true
+        );
       }
-    });
-    this.map.addControl(this.drawControl);
+    );
   }
+
 
   disableEditing() {
-    if (this.drawControl) {
-      this.map.removeControl(this.drawControl);
-      this.drawControl = null;
-    }
+
+    this.editingEnabled =
+      false;
+
+
+    this.editablePolygons.forEach(
+      polygon => {
+
+        polygon.setEditable(
+          false
+        );
+      }
+    );
   }
+
+
+  /*
+  |--------------------------------------------------------------------------
+  | GEOJSON ORIGINAL
+  |--------------------------------------------------------------------------
+  */
 
   getOriginalGeoJSON() {
-    const layers = this.originalLayer.getLayers();
-    return layers[0] ? layers[0].toGeoJSON() : null;
+
+    if (
+      this.originalPolygons.length === 0
+    ) {
+      return null;
+    }
+
+
+    if (
+      this.originalPolygons.length === 1
+    ) {
+
+      return this.googlePolygonToGeoJSON(
+        this.originalPolygons[0]
+      );
+    }
+
+
+    return {
+      type: 'Feature',
+
+      properties: {},
+
+      geometry: {
+        type: 'MultiPolygon',
+
+        coordinates:
+          this.originalPolygons.map(
+            polygon => {
+
+              return polygon
+                .getPaths()
+                .getArray()
+                .map(
+                  path => {
+
+                    const ring = [];
+
+                    for (
+                      let i = 0;
+                      i < path.getLength();
+                      i++
+                    ) {
+
+                      const point =
+                        path.getAt(i);
+
+                      ring.push([
+                        point.lng(),
+                        point.lat()
+                      ]);
+                    }
+
+                    return ring;
+                  }
+                );
+            }
+          )
+      }
+    };
   }
+
+
+  /*
+  |--------------------------------------------------------------------------
+  | GEOJSON EDITADO
+  |--------------------------------------------------------------------------
+  */
 
   getEditedGeoJSON() {
-    const layers = this.editableGroup.getLayers();
-    return layers[0] ? layers[0].toGeoJSON() : null;
-  }
 
-  showReferenceManzanas(featureCollection) {
-    this.referenceLayer.clearLayers();
-    if (featureCollection) this.referenceLayer.addData(featureCollection);
-  }
+    if (
+      this.editablePolygons.length === 0
+    ) {
+      return null;
+    }
 
-  showAffected(feature) {
-    this.affectedLayer.clearLayers();
-    if (feature) {
-      this.affectedLayer.addData(feature);
-      if (this.affectedLayer.getBounds().isValid()) {
-        this.map.fitBounds(this.affectedLayer.getBounds(), { padding: [40, 40] });
+
+    if (
+      this.editablePolygons.length === 1
+    ) {
+
+      return this.googlePolygonToGeoJSON(
+        this.editablePolygons[0]
+      );
+    }
+
+
+    return {
+      type: 'Feature',
+
+      properties: {},
+
+      geometry: {
+        type: 'MultiPolygon',
+
+        coordinates:
+          this.editablePolygons.map(
+            polygon => {
+
+              return polygon
+                .getPaths()
+                .getArray()
+                .map(
+                  path => {
+
+                    const ring = [];
+
+                    for (
+                      let i = 0;
+                      i < path.getLength();
+                      i++
+                    ) {
+
+                      const point =
+                        path.getAt(i);
+
+                      ring.push([
+                        point.lng(),
+                        point.lat()
+                      ]);
+                    }
+
+                    return ring;
+                  }
+                );
+            }
+          )
       }
+    };
+  }
+
+
+  /*
+  |--------------------------------------------------------------------------
+  | REFERENCIA
+  |--------------------------------------------------------------------------
+  */
+
+  showReferenceManzanas(
+    featureCollection
+  ) {
+
+    this.clearObjects(
+      this.referenceObjects
+    );
+
+
+    if (
+      !featureCollection ||
+      !featureCollection.features
+    ) {
+      return;
+    }
+
+
+    featureCollection.features.forEach(
+      feature => {
+
+        if (
+          !feature.geometry
+        ) {
+          return;
+        }
+
+
+        const paths =
+          this.geoJsonToGooglePaths(
+            feature.geometry
+          );
+
+
+        paths.forEach(
+          polygonPaths => {
+
+            const polygon =
+              this.createPolygon(
+                polygonPaths,
+                {
+                  strokeColor:
+                    '#999999',
+
+                  strokeOpacity: 1,
+
+                  strokeWeight: 1,
+
+                  fillColor:
+                    '#999999',
+
+                  fillOpacity: 0.04,
+
+                  clickable: false
+                }
+              );
+
+
+            this.referenceObjects.push(
+              polygon
+            );
+          }
+        );
+      }
+    );
+  }
+
+
+  /*
+  |--------------------------------------------------------------------------
+  | ZONA AFECTADA
+  |--------------------------------------------------------------------------
+  */
+
+  showAffected(
+    feature
+  ) {
+
+    this.clearObjects(
+      this.affectedObjects
+    );
+
+
+    if (!feature) {
+      return;
+    }
+
+
+    const paths =
+      this.geoJsonToGooglePaths(
+        feature.geometry
+      );
+
+
+    paths.forEach(
+      polygonPaths => {
+
+        const polygon =
+          this.createPolygon(
+            polygonPaths,
+            {
+              strokeColor:
+                '#C00000',
+
+              strokeOpacity: 1,
+
+              strokeWeight: 2,
+
+              fillColor:
+                '#ff6b6b',
+
+              fillOpacity: 0.45
+            }
+          );
+
+
+        this.affectedObjects.push(
+          polygon
+        );
+      }
+    );
+
+
+    const bounds =
+      new google.maps.LatLngBounds();
+
+
+    this.affectedObjects.forEach(
+      polygon => {
+
+        polygon
+          .getPaths()
+          .forEach(
+            path => {
+
+              path.forEach(
+                point => {
+
+                  bounds.extend(
+                    point
+                  );
+                }
+              );
+            }
+          );
+      }
+    );
+
+
+    if (
+      !bounds.isEmpty()
+    ) {
+
+      this.map.fitBounds(
+        bounds,
+        40
+      );
     }
   }
 
-  showManzanasResult(featureCollection) {
-    this.manzanasResultLayer.clearLayers();
-    if (featureCollection) this.manzanasResultLayer.addData(featureCollection);
+
+  /*
+  |--------------------------------------------------------------------------
+  | RESULTADOS MANZANAS
+  |--------------------------------------------------------------------------
+  */
+
+  showManzanasResult(
+    featureCollection
+  ) {
+
+    this.clearObjects(
+      this.manzanasResultObjects
+    );
+
+
+    if (
+      !featureCollection?.features
+    ) {
+      return;
+    }
+
+
+    featureCollection.features.forEach(
+      feature => {
+
+        const pct =
+          feature.properties
+            ?.porcentaje_afectado ??
+          100;
+
+
+        const paths =
+          this.geoJsonToGooglePaths(
+            feature.geometry
+          );
+
+
+        paths.forEach(
+          polygonPaths => {
+
+            const polygon =
+              this.createPolygon(
+                polygonPaths,
+                {
+                  strokeColor:
+                    '#C00000',
+
+                  strokeOpacity: 1,
+
+                  strokeWeight: 1,
+
+                  fillColor:
+                    '#ff5050',
+
+                  fillOpacity:
+                    Math.min(
+                      0.85,
+                      Math.max(
+                        0.15,
+                        pct / 100
+                      )
+                    )
+                }
+              );
+
+
+            polygon.addListener(
+              'click',
+              () => {
+
+                const p =
+                  feature.properties || {};
+
+
+                const content =
+                  `<strong>Manzana ${p.manzana ?? ''}</strong><br>` +
+                  `Sección: ${p.seccion ?? '-'}<br>` +
+                  `Lista Nominal: ${p.LN ?? '-'}<br>` +
+                  `% dentro de la zona afectada: ${pct}%`;
+
+
+                this.showInfoWindow(
+                  polygon,
+                  content
+                );
+              }
+            );
+
+
+            this.manzanasResultObjects.push(
+              polygon
+            );
+          }
+        );
+      }
+    );
   }
 
-  showLocalidadResult(featureCollection) {
-    this.localidadResultLayer.clearLayers();
-    if (featureCollection) this.localidadResultLayer.addData(featureCollection);
+
+  /*
+  |--------------------------------------------------------------------------
+  | RESULTADOS LOCALIDADES
+  |--------------------------------------------------------------------------
+  */
+
+  showLocalidadResult(
+    featureCollection
+  ) {
+
+    this.clearObjects(
+      this.localidadResultObjects
+    );
+
+
+    if (
+      !featureCollection?.features
+    ) {
+      return;
+    }
+
+
+    featureCollection.features.forEach(
+      feature => {
+
+        if (
+          feature.geometry?.type !==
+          'Point'
+        ) {
+          return;
+        }
+
+
+        const [
+          lng,
+          lat
+        ] =
+          feature.geometry.coordinates;
+
+
+        const marker =
+          new google.maps.Marker({
+
+            map: this.map,
+
+            position: {
+              lat,
+              lng
+            }
+          });
+
+
+        marker.addListener(
+          'click',
+          () => {
+
+            const p =
+              feature.properties || {};
+
+
+            const content =
+              `<strong>Localidad: ${p.localidad ?? ''}</strong><br>` +
+              `Sección: ${p.seccion ?? '-'}<br>` +
+              `Lista Nominal: ${p.LN ?? '-'}`;
+
+
+            this.showInfoWindow(
+              marker,
+              content
+            );
+          }
+        );
+
+
+        this.localidadResultObjects.push(
+          marker
+        );
+      }
+    );
   }
 
-  toggleReferenceVisible(visible) {
-    if (visible) this.map.addLayer(this.referenceLayer);
-    else this.map.removeLayer(this.referenceLayer);
+
+  /*
+  |--------------------------------------------------------------------------
+  | INFO WINDOW
+  |--------------------------------------------------------------------------
+  */
+
+  showInfoWindow(
+    object,
+    content
+  ) {
+
+    if (
+      this.infoWindow
+    ) {
+
+      this.infoWindow.close();
+    }
+
+
+    this.infoWindow =
+      new google.maps.InfoWindow({
+        content
+      });
+
+
+    this.infoWindow.open({
+
+      map: this.map,
+
+      anchor: object
+    });
   }
 
-  // Limpia solo lo derivado del análisis (zona afectada + resultados),
-  // conservando el polígono original y el editable tal como están.
+
+  /*
+  |--------------------------------------------------------------------------
+  | VISIBILIDAD REFERENCIA
+  |--------------------------------------------------------------------------
+  */
+
+  toggleReferenceVisible(
+    visible
+  ) {
+
+    this.referenceObjects.forEach(
+      object => {
+
+        object.setMap(
+          visible
+            ? this.map
+            : null
+        );
+      }
+    );
+  }
+
+
+  /*
+  |--------------------------------------------------------------------------
+  | LIMPIEZA
+  |--------------------------------------------------------------------------
+  */
+
   clearDownstream() {
-    this.affectedLayer.clearLayers();
-    this.manzanasResultLayer.clearLayers();
-    this.localidadResultLayer.clearLayers();
+
+    this.clearObjects(
+      this.affectedObjects
+    );
+
+    this.clearObjects(
+      this.manzanasResultObjects
+    );
+
+    this.clearObjects(
+      this.localidadResultObjects
+    );
   }
+
 
   clearAll() {
-    this.originalLayer.clearLayers();
-    this.editableGroup.clearLayers();
-    this.referenceLayer.clearLayers();
-    this.affectedLayer.clearLayers();
-    this.manzanasResultLayer.clearLayers();
-    this.localidadResultLayer.clearLayers();
-    this.disableEditing();
+
+    this.clearObjects(
+      this.originalPolygons
+    );
+
+    this.clearObjects(
+      this.editablePolygons
+    );
+
+    this.clearObjects(
+      this.referenceObjects
+    );
+
+    this.clearObjects(
+      this.affectedObjects
+    );
+
+    this.clearObjects(
+      this.manzanasResultObjects
+    );
+
+    this.clearObjects(
+      this.localidadResultObjects
+    );
+
+
+    this.stopDrawing();
+
+
+    if (
+      this.infoWindow
+    ) {
+
+      this.infoWindow.close();
+    }
+  }
+
+
+  clearObjects(
+    objects
+  ) {
+
+    objects.forEach(
+      object => {
+
+        if (
+          object.setMap
+        ) {
+
+          object.setMap(
+            null
+          );
+        }
+      }
+    );
+
+
+    objects.length = 0;
   }
 }
