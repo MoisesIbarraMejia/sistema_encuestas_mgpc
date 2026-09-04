@@ -379,11 +379,11 @@ class MapManager {
 
         pathSets.forEach((paths) => {
           const polygon = this.createPolygon(paths, {
-            strokeColor: '#7f8c8d',
+            strokeColor: '#8A3880',
             strokeOpacity: 0.85,
-            strokeWeight: 1,
-            fillColor: '#dfe4e6',
-            fillOpacity: 0.30,
+            strokeWeight: 1.2,
+            fillColor: '#8a3880',
+            fillOpacity: 0.05,
             clickable: false,
             zIndex: 1
           });
