@@ -15,11 +15,7 @@ const Api = (() => {
     );
 
     Object.entries(queryParams).forEach(([k, v]) => {
-      if (
-        v !== undefined &&
-        v !== null &&
-        v !== ''
-      ) {
+      if (v !== undefined && v !== null && v !== '') {
         url.searchParams.set(k, v);
       }
     });
@@ -74,14 +70,33 @@ const Api = (() => {
   // ============================================================
   // GEOMETRÍA DE UNA UT
   // ============================================================
-  // filter_2 consulta directamente la BD mediante cve_ut.
-  // Devuelve exclusivamente la geometría y propiedades de esa UT.
+  // filter_2 consulta directamente la BD mediante cve_ut y
+  // devuelve exclusivamente la geometría/properties de esa UT.
   // ============================================================
 
   function getUTByCve(cveUt) {
     return get(
       CONFIG.ENDPOINTS.utPorCve,
       { cve_ut: cveUt }
+    );
+  }
+
+  // ============================================================
+  // MANZANAS DE REFERENCIA CON BUFFER
+  // ============================================================
+  // Devuelve las manzanas que intersectan la geometría de la UT
+  // ampliada con el buffer indicado en metros.
+  // ============================================================
+
+  function manzanasDeReferencia(geometry, bufferMeters = CONFIG.MAP.referenceBufferMeters) {
+    return post(
+      '/intersect/manzana',
+      {
+        geometry,
+        mode: 'intersects',
+        include_percentage: false,
+        buffer_meters: bufferMeters
+      }
     );
   }
 
@@ -122,7 +137,8 @@ const Api = (() => {
       geometry,
       cacheId,
       mode = 'intersects',
-      includePercentage = true
+      includePercentage = true,
+      bufferMeters
     }
   ) {
 
@@ -137,24 +153,16 @@ const Api = (() => {
       body.geometry = geometry;
     }
 
+    if (
+      bufferMeters !== undefined &&
+      bufferMeters !== null
+    ) {
+      body.buffer_meters = bufferMeters;
+    }
+
     return post(
       `/intersect/${table}`,
       body
-    );
-  }
-
-  // ============================================================
-  // MANZANAS DE REFERENCIA
-  // ============================================================
-
-  function manzanasDeReferencia(geometry) {
-    return intersect(
-      CONFIG.TABLES.manzana,
-      {
-        geometry,
-        mode: 'intersects',
-        includePercentage: false
-      }
     );
   }
 
