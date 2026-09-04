@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sistema de Cálculo de Encuestas MGPC — Modificación de Límites de UT</title>
+
+<!-- Leaflet -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<!-- Leaflet.draw (edición de polígonos) -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.css" />
+<script src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js"></script>
+
+<!-- Turf.js (operaciones geométricas en el cliente) -->
+<script src="https://unpkg.com/@turf/turf@6/turf.min.js"></script>
+
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<header class="app-header">
+  <h1>Sistema de Cálculo de Encuestas — Modificación de Límites Territoriales (MGPC)</h1>
+  <span class="app-subtitle">IECM · Muestreo por población realmente afectada</span>
+</header>
+
+<div class="app-layout">
+
+  <!-- ======================= SIDEBAR ======================= -->
+  <aside class="sidebar">
+
+    <!-- 1. Selección de UT -->
+    <section class="panel">
+      <h2>1. Seleccionar Unidad Territorial</h2>
+      <input list="ut-list" id="ut-search" placeholder="Escribe clave o nombre de la UT…" autocomplete="off">
+      <datalist id="ut-list"></datalist>
+      <button id="btn-cargar-ut" class="btn btn-primary" disabled>Cargar UT en el mapa</button>
+      <label class="checkbox-row">
+        <input type="checkbox" id="chk-referencia">
+        Mostrar manzanas de referencia (contexto visual)
+      </label>
+    </section>
+
+    <!-- 2. Edición de límites -->
+    <section class="panel">
+      <h2>2. Editar propuesta de límite</h2>
+      <p class="hint">Carga la UT primero. El polígono azul es editable: arrastra sus vértices para proponer el nuevo límite.</p>
+      <button id="btn-editar" class="btn" disabled>Habilitar edición de vértices</button>
+      <button id="btn-calcular-zona" class="btn" disabled>Calcular zona afectada</button>
+      <div id="zona-afectada-info" class="info-box hidden"></div>
+    </section>
+
+    <!-- 3. Clasificación del caso -->
+    <section class="panel">
+      <h2>3. Clasificar el caso</h2>
+      <label for="sel-tipo-caso">Tipo de caso</label>
+      <select id="sel-tipo-caso"></select>
+
+      <label class="checkbox-row"><input type="checkbox" id="chk-copaco"> ¿Existe COPACO activo en la UT?</label>
+      <label class="checkbox-row"><input type="checkbox" id="chk-identidad"> ¿La causa es identidad cultural?</label>
+      <label class="checkbox-row"><input type="checkbox" id="chk-desempate"> ¿Es desempate por resultados previos?</label>
+      <label class="checkbox-row"><input type="checkbox" id="chk-solicitud"> ¿Lo solicitan las personas ciudadanas? (IV/V)</label>
+      <label class="checkbox-row"><input type="checkbox" id="chk-actualizacion"> ¿Es actualización cartográfica?</label>
+
+      <div id="modelo-sugerido" class="info-box hidden"></div>
+    </section>
+
+    <!-- 4. Parámetros de muestreo (avanzado) -->
+    <details class="panel">
+      <summary><h2 style="display:inline">4. Parámetros de muestreo</h2></summary>
+      <div class="param-grid">
+        <label>Z <input type="number" id="param-z" step="0.01"></label>
+        <label>p <input type="number" id="param-p" step="0.01"></label>
+        <label>q <input type="number" id="param-q" step="0.01"></label>
+        <label>d <input type="number" id="param-d" step="0.001"></label>
+        <label>Umbral de censo (N) <input type="number" id="param-umbral" step="1"></label>
+      </div>
+    </details>
+
+    <!-- 5. Analizar -->
+    <section class="panel">
+      <button id="btn-analizar" class="btn btn-primary btn-large" disabled>Analizar y calcular muestra</button>
+      <div id="analizar-status" class="status-line"></div>
+    </section>
+
+    <!-- 6. Resultados -->
+    <section class="panel" id="panel-resultados" hidden>
+      <h2>Resultados</h2>
+      <div class="result-summary" id="result-summary"></div>
+
+      <h3>Manzanas afectadas</h3>
+      <div class="table-scroll">
+        <table id="tabla-manzanas">
+          <thead><tr><th>Manzana</th><th>Sección</th><th>LN</th><th>% afectado</th><th>LN ponderada</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
+      <h3>Localidades afectadas</h3>
+      <div class="table-scroll">
+        <table id="tabla-localidades">
+          <thead><tr><th>Localidad</th><th>Sección</th><th>LN</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
+      <button id="btn-exportar" class="btn">Exportar desglose (CSV)</button>
+    </section>
+
+  </aside>
+
+  <!-- ======================= MAPA ======================= -->
+  <main class="map-wrap">
+    <div id="map"></div>
+    <div class="legend">
+      <div><span class="swatch swatch-original"></span> UT original</div>
+      <div><span class="swatch swatch-editable"></span> Propuesta (editable)</div>
+      <div><span class="swatch swatch-affected"></span> Zona afectada</div>
+      <div><span class="swatch swatch-manzana"></span> Manzanas resultado</div>
+      <div><span class="swatch swatch-localidad"></span> Localidades resultado</div>
+    </div>
+  </main>
+
+</div>
+
+<footer class="app-footer" id="log-footer">Listo.</footer>
+
+<script src="js/config.js"></script>
+<script src="js/api.js"></script>
+<script src="js/sampling.js"></script>
+<script src="js/diff.js"></script>
+<script src="js/modeloEncuesta.js"></script>
+<script src="js/mapManager.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,167 @@
+:root {
+  --purple: #4B2E83;
+  --purple-dark: #37225f;
+  --red: #C00000;
+  --green: #006100;
+  --gray-bg: #f4f2f8;
+  --border: #ddd6ea;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: 'Segoe UI', Arial, sans-serif;
+  color: #222;
+  background: var(--gray-bg);
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.app-header {
+  background: var(--purple);
+  color: #fff;
+  padding: 12px 20px;
+}
+.app-header h1 { margin: 0; font-size: 18px; }
+.app-subtitle { font-size: 12px; opacity: 0.85; }
+
+.app-layout {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
+
+.sidebar {
+  width: 380px;
+  min-width: 340px;
+  overflow-y: auto;
+  background: #fff;
+  border-right: 1px solid var(--border);
+  padding: 12px;
+}
+
+.panel {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 12px;
+  background: #fff;
+}
+.panel h2 { font-size: 14px; color: var(--purple); margin: 0 0 8px 0; }
+.panel h3 { font-size: 13px; color: var(--purple-dark); margin: 10px 0 4px; }
+
+.hint { font-size: 11.5px; color: #666; margin: 4px 0 8px; }
+
+input[type="text"], input[list], input[type="number"], select {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  font-size: 13px;
+  margin-bottom: 8px;
+}
+
+.checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  margin: 6px 0;
+  cursor: pointer;
+}
+.checkbox-row input { margin: 0; }
+
+.btn {
+  width: 100%;
+  padding: 8px 10px;
+  margin: 4px 0;
+  border: 1px solid var(--purple);
+  background: #fff;
+  color: var(--purple);
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.btn:hover:not(:disabled) { background: #efeaf7; }
+.btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.btn-primary {
+  background: var(--purple);
+  color: #fff;
+}
+.btn-primary:hover:not(:disabled) { background: var(--purple-dark); }
+
+.btn-large { font-size: 14px; padding: 10px; font-weight: 600; }
+
+.info-box {
+  margin-top: 8px;
+  padding: 8px 10px;
+  background: #f6f1ff;
+  border: 1px solid #d9c8f5;
+  border-radius: 6px;
+  font-size: 12px;
+  line-height: 1.4;
+}
+.info-box.hidden { display: none; }
+
+.param-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px 10px;
+}
+.param-grid label { font-size: 11.5px; color: #444; }
+
+.status-line { font-size: 11.5px; color: #777; margin-top: 6px; min-height: 14px; }
+.status-line.error { color: var(--red); font-weight: 600; }
+.status-line.ok { color: var(--green); font-weight: 600; }
+
+.result-summary {
+  background: #f8f6fc;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px;
+  font-size: 13px;
+  line-height: 1.6;
+}
+.result-summary b { color: var(--purple); }
+.result-summary .badge-censo { color: var(--green); font-weight: 700; }
+.result-summary .badge-muestreo { color: var(--purple); font-weight: 700; }
+
+.table-scroll { max-height: 180px; overflow-y: auto; border: 1px solid var(--border); border-radius: 6px; }
+table { width: 100%; border-collapse: collapse; font-size: 11.5px; }
+th, td { padding: 4px 6px; text-align: right; border-bottom: 1px solid #eee; }
+th:first-child, td:first-child { text-align: left; }
+thead th { position: sticky; top: 0; background: #f0eaf9; color: var(--purple-dark); }
+
+.map-wrap { flex: 1; position: relative; }
+#map { height: 100%; width: 100%; }
+
+.legend {
+  position: absolute;
+  bottom: 14px;
+  right: 14px;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 11.5px;
+  z-index: 1000;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.15);
+}
+.legend div { display: flex; align-items: center; gap: 6px; margin: 2px 0; }
+.swatch { width: 12px; height: 12px; border-radius: 2px; display: inline-block; }
+.swatch-original { background: #fff; border: 2px dashed #4B2E83; }
+.swatch-editable { background: #cfe0fb; border: 1px solid #1565c0; }
+.swatch-affected { background: #ff6b6b; border: 1px solid #C00000; }
+.swatch-manzana { background: #ff5050; border: 1px solid #C00000; }
+.swatch-localidad { background: #8fd19e; border: 1px solid #006100; border-radius: 50%; }
+
+.app-footer {
+  background: #2c2c2c;
+  color: #ccc;
+  font-size: 11.5px;
+  padding: 5px 12px;
+}
