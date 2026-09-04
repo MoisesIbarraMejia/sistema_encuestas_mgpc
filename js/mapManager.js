@@ -66,6 +66,7 @@ class MapManager {
     });
 
     this.drawingClickListener = this.map.addListener('click', (event) => {
+      if (!event?.latLng) return;
       this.drawingPath.push(event.latLng);
       this.drawingPolyline.setPath(this.drawingPath);
     });
@@ -98,6 +99,7 @@ class MapManager {
 
   startRectangleDrawing() {
     this.stopDrawing();
+
     this.rectangle = new google.maps.Rectangle({
       map: this.map,
       strokeColor: '#1565c0',
@@ -110,13 +112,20 @@ class MapManager {
     });
 
     this.rectangleStart = null;
+
     this.rectangleClickListener = this.map.addListener('click', (event) => {
+      if (!event?.latLng) return;
+
       if (!this.rectangleStart) {
         this.rectangleStart = event.latLng;
         return;
       }
 
-      const bounds = new google.maps.LatLngBounds(this.rectangleStart, event.latLng);
+      const bounds = new google.maps.LatLngBounds(
+        this.rectangleStart,
+        event.latLng
+      );
+
       this.rectangle.setBounds(bounds);
       this.stopDrawing();
     });
@@ -149,8 +158,8 @@ class MapManager {
 
   // ------------------------------------------------------------
   // GEOJSON -> GOOGLE MAPS
-  // Un Polygon se representa como un conjunto de rings.
-  // Un MultiPolygon se representa como varios conjuntos de rings.
+  // Un Polygon = [rings]
+  // Un MultiPolygon = [[rings], [rings], ...]
   // ------------------------------------------------------------
 
   geoJsonToGooglePaths(geometry) {
@@ -197,7 +206,7 @@ class MapManager {
         throw new Error('Un anillo de la geometría no es válido.');
       }
 
-      return ring.map((coordinate) => {
+      const converted = ring.map((coordinate) => {
         if (!Array.isArray(coordinate) || coordinate.length < 2) {
           throw new Error('Una coordenada GeoJSON no es válida.');
         }
@@ -213,6 +222,12 @@ class MapManager {
 
         return { lat, lng };
       });
+
+      if (converted.length < 3) {
+        throw new Error('Un anillo necesita al menos tres coordenadas válidas.');
+      }
+
+      return converted;
     });
   }
 
@@ -251,7 +266,11 @@ class MapManager {
   }
 
   createPolygon(paths, options = {}) {
-    return new google.maps.Polygon({ map: this.map, paths, ...options });
+    return new google.maps.Polygon({
+      map: this.map,
+      paths,
+      ...options
+    });
   }
 
   // ------------------------------------------------------------
@@ -275,7 +294,8 @@ class MapManager {
         strokeWeight: 2,
         fillColor: '#4B2E83',
         fillOpacity: 0.05,
-        editable: false
+        editable: false,
+        clickable: false
       });
 
       const editablePolygon = this.createPolygon(paths, {
@@ -284,7 +304,8 @@ class MapManager {
         strokeWeight: 2,
         fillColor: '#cfe0fb',
         fillOpacity: 0.15,
-        editable: false
+        editable: false,
+        clickable: false
       });
 
       this.originalPolygons.push(originalPolygon);
@@ -353,20 +374,25 @@ class MapManager {
     featureCollection.features.forEach((feature) => {
       if (!feature?.geometry) return;
 
-      const pathSets = this.geoJsonToGooglePaths(feature.geometry);
+      try {
+        const pathSets = this.geoJsonToGooglePaths(feature.geometry);
 
-      pathSets.forEach((paths) => {
-        const polygon = this.createPolygon(paths, {
-          strokeColor: '#999999',
-          strokeOpacity: 1,
-          strokeWeight: 1,
-          fillColor: '#999999',
-          fillOpacity: 0.04,
-          clickable: false
+        pathSets.forEach((paths) => {
+          const polygon = this.createPolygon(paths, {
+            strokeColor: '#7f8c8d',
+            strokeOpacity: 0.85,
+            strokeWeight: 1,
+            fillColor: '#dfe4e6',
+            fillOpacity: 0.30,
+            clickable: false,
+            zIndex: 1
+          });
+
+          this.referenceObjects.push(polygon);
         });
-
-        this.referenceObjects.push(polygon);
-      });
+      } catch (error) {
+        console.warn('Manzana de referencia omitida por geometría inválida:', error);
+      }
     });
   }
 
@@ -386,7 +412,8 @@ class MapManager {
         strokeOpacity: 1,
         strokeWeight: 2,
         fillColor: '#ff6b6b',
-        fillOpacity: 0.45
+        fillOpacity: 0.45,
+        zIndex: 4
       });
 
       this.affectedObjects.push(polygon);
@@ -417,30 +444,35 @@ class MapManager {
     featureCollection.features.forEach((feature) => {
       if (!feature?.geometry) return;
 
-      const pct = feature.properties?.porcentaje_afectado ?? 100;
-      const pathSets = this.geoJsonToGooglePaths(feature.geometry);
+      try {
+        const pct = feature.properties?.porcentaje_afectado ?? 100;
+        const pathSets = this.geoJsonToGooglePaths(feature.geometry);
 
-      pathSets.forEach((paths) => {
-        const polygon = this.createPolygon(paths, {
-          strokeColor: '#C00000',
-          strokeOpacity: 1,
-          strokeWeight: 1,
-          fillColor: '#ff5050',
-          fillOpacity: Math.min(0.85, Math.max(0.15, pct / 100))
+        pathSets.forEach((paths) => {
+          const polygon = this.createPolygon(paths, {
+            strokeColor: '#C00000',
+            strokeOpacity: 1,
+            strokeWeight: 1,
+            fillColor: '#ff5050',
+            fillOpacity: Math.min(0.85, Math.max(0.20, pct / 100)),
+            zIndex: 5
+          });
+
+          polygon.addListener('click', () => {
+            const p = feature.properties || {};
+            const content =
+              `<strong>Manzana ${p.manzana ?? ''}</strong><br>` +
+              `Sección: ${p.seccion ?? '-'}<br>` +
+              `Lista Nominal: ${p.LN ?? '-'}<br>` +
+              `% dentro de la zona afectada: ${pct}%`;
+            this.showInfoWindow(polygon, content);
+          });
+
+          this.manzanasResultObjects.push(polygon);
         });
-
-        polygon.addListener('click', () => {
-          const p = feature.properties || {};
-          const content =
-            `<strong>Manzana ${p.manzana ?? ''}</strong><br>` +
-            `Sección: ${p.seccion ?? '-'}<br>` +
-            `Lista Nominal: ${p.LN ?? '-'}<br>` +
-            `% dentro de la zona afectada: ${pct}%`;
-          this.showInfoWindow(polygon, content);
-        });
-
-        this.manzanasResultObjects.push(polygon);
-      });
+      } catch (error) {
+        console.warn('Manzana resultado omitida por geometría inválida:', error);
+      }
     });
   }
 
@@ -464,7 +496,8 @@ class MapManager {
 
       const marker = new google.maps.Marker({
         map: this.map,
-        position: { lat, lng }
+        position: { lat, lng },
+        zIndex: 6
       });
 
       marker.addListener('click', () => {
