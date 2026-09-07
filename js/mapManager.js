@@ -62,7 +62,7 @@ class MapManager {
       path: this.drawingPath,
       strokeColor: '#1565c0',
       strokeOpacity: 1,
-      strokeWeight: 2
+      strokeWeight: 4
     });
 
     this.drawingClickListener = this.map.addListener('click', (event) => {
@@ -87,7 +87,7 @@ class MapManager {
       paths: this.drawingPath,
       strokeColor: '#1565c0',
       strokeOpacity: 1,
-      strokeWeight: 2,
+      strokeWeight: 4,
       fillColor: '#cfe0fb',
       fillOpacity: 0.25,
       editable: true
@@ -104,7 +104,7 @@ class MapManager {
       map: this.map,
       strokeColor: '#1565c0',
       strokeOpacity: 1,
-      strokeWeight: 2,
+      strokeWeight: 4,
       fillColor: '#cfe0fb',
       fillOpacity: 0.25,
       editable: true,
@@ -289,9 +289,9 @@ class MapManager {
 
     pathSets.forEach((paths) => {
       const originalPolygon = this.createPolygon(paths, {
-        strokeColor: '#4B2E83',
+        strokeColor: '#000000',
         strokeOpacity: 1,
-        strokeWeight: 2,
+        strokeWeight: 4,
         fillColor: '#4B2E83',
         fillOpacity: 0.05,
         editable: false,
@@ -301,7 +301,7 @@ class MapManager {
       const editablePolygon = this.createPolygon(paths, {
         strokeColor: '#1565c0',
         strokeOpacity: 1,
-        strokeWeight: 2,
+        strokeWeight: 4,
         fillColor: '#cfe0fb',
         fillOpacity: 0.15,
         editable: false,
