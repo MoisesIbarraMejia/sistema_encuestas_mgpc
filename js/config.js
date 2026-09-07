@@ -17,7 +17,12 @@ const CONFIG = {
     localidad: 'localidad'
   },
 
-  // Parámetros del muestreo
+  // Parámetros del muestreo — fórmula de Cochran directa sobre la
+  // población afectada + censo mínimo (ver js/sampling.js y
+  // Analisis_Muestreo_MGPC2025.xlsx, hoja "3. Propuesta nueva").
+  // Z, p, q, d son los mismos que ya usa el Documento Rector;
+  // censusThreshold=100 es el umbral de censo mínimo de esa propuesta
+  // (ajustable aquí o en vivo desde el panel "4. Parámetros de muestreo").
   SAMPLING: {
     Z: 2.58,
     p: 0.5,
