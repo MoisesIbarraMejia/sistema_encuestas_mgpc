@@ -27,6 +27,15 @@ function normalizeCveUt(value) {
   return (value || '').trim().toUpperCase();
 }
 
+// La Spatial API a veces devuelve "LN" (mayúsculas) y otras "ln".
+// Se lee de forma robusta para no perder población por un problema de mayúsculas.
+function getLN(props) {
+  if (!props) return 0;
+  const raw = props.LN ?? props.ln ?? props.Ln ?? props.lN;
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : 0;
+}
+
 function populateTipoCasoSelect() {
   const sel = document.getElementById('sel-tipo-caso');
   sel.innerHTML = '';
@@ -134,7 +143,11 @@ function wireEvents() {
       mapManager.loadOriginalUT(feature);
 
       btnEditar.disabled = false;
-      btnCalcularZona.disabled = false;
+      btnEditar.textContent = 'Habilitar edición de vértices';
+      btnEditar.classList.remove('btn-primary');
+      // "Calcular zona" solo se habilita después de confirmar/bloquear la edición
+      // (ver el manejador de btnEditar), para que los dos pasos sean consecutivos.
+      btnCalcularZona.disabled = true;
 
       const nombre = feature.properties?.nombre || '';
 
@@ -175,10 +188,32 @@ function wireEvents() {
   });
 
   btnEditar.addEventListener('click', () => {
-    mapManager.enableEditing();
-    setStatus(
-      'Edición habilitada: arrastra los vértices del polígono azul para proponer el nuevo límite.'
-    );
+    if (!mapManager.editingEnabled) {
+      // Si ya había una zona/resultado calculado con la forma anterior,
+      // se invalida: el polígono va a cambiar de nuevo.
+      if (state.affectedFeature) {
+        resetDownstreamState();
+      }
+
+      mapManager.enableEditing();
+      btnEditar.textContent = 'Bloquear edición y continuar';
+      btnEditar.classList.add('btn-primary');
+      btnCalcularZona.disabled = true;
+
+      setStatus(
+        'Edición habilitada: arrastra los vértices del polígono azul. Cuando termines, presiona "Bloquear edición y continuar".'
+      );
+    } else {
+      mapManager.disableEditing();
+      btnEditar.textContent = 'Habilitar edición de vértices';
+      btnEditar.classList.remove('btn-primary');
+      btnCalcularZona.disabled = false;
+
+      setStatus(
+        'Edición bloqueada: el polígono ya no se puede modificar. Ahora puedes calcular la zona afectada.',
+        'ok'
+      );
+    }
   });
 
   btnCalcularZona.addEventListener('click', () => {
@@ -219,12 +254,19 @@ function wireEvents() {
       mapManager.showAffected(affected);
 
       const areaM2 = turf.area(affected);
+      const areaOriginalM2 = turf.area(original);
+      const pctAreaUT =
+        areaOriginalM2 > 0 ? (areaM2 / areaOriginalM2) * 100 : 0;
+
       const info = document.getElementById('zona-afectada-info');
       info.classList.remove('hidden');
       info.innerHTML =
         `Zona afectada calculada: <b>${areaM2.toLocaleString('es-MX', {
           maximumFractionDigits: 0
-        })} m²</b>. Lista para analizar.`;
+        })} m²</b> ` +
+        `(<b>${pctAreaUT.toLocaleString('es-MX', {
+          maximumFractionDigits: 1
+        })}%</b> del área total de la UT). Lista para analizar.`;
 
       btnAnalizar.disabled = false;
       setStatus(
@@ -308,7 +350,7 @@ async function analizar() {
     let nManzanas = 0;
 
     manzanasResp.features.forEach((f) => {
-      const ln = Number(f.properties.ln) || 0;
+      const ln = getLN(f.properties);
       const pct =
         (f.properties.porcentaje_afectado ?? 100) / 100;
       nManzanas += ln * pct;
@@ -317,7 +359,7 @@ async function analizar() {
     let nLocalidades = 0;
 
     localidadResp.features.forEach((f) => {
-      nLocalidades += Number(f.properties.ln) || 0;
+      nLocalidades += getLN(f.properties);
     });
 
     const N = nManzanas + nLocalidades;
@@ -419,7 +461,7 @@ function renderResultados({
 
   state.manzanasResult.features.forEach((f) => {
     const p = f.properties;
-    const ln = Number(p.ln) || 0;
+    const ln = getLN(p);
     const pct = p.porcentaje_afectado ?? 100;
     const ponderada = ln * (pct / 100);
 
@@ -444,7 +486,7 @@ function renderResultados({
     tr.innerHTML =
       `<td>${p.localidad ?? '-'}</td>` +
       `<td>${p.seccion ?? '-'}</td>` +
-      `<td>${Number(p.ln) || 0}</td>`;
+      `<td>${getLN(p)}</td>`;
 
     tbodyLocalidades.appendChild(tr);
   });
@@ -460,7 +502,7 @@ function exportarCSV() {
 
   (state.manzanasResult?.features || []).forEach((f) => {
     const p = f.properties;
-    const ln = Number(p.ln) || 0;
+    const ln = getLN(p);
     const pct = p.porcentaje_afectado ?? 100;
 
     lines.push(
@@ -470,7 +512,7 @@ function exportarCSV() {
 
   (state.localidadResult?.features || []).forEach((f) => {
     const p = f.properties;
-    const ln = Number(p.ln) || 0;
+    const ln = getLN(p);
 
     lines.push(
       `localidad,${p.localidad ?? ''},${p.seccion ?? ''},${ln},100,${ln}`

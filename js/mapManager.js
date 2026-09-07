@@ -20,140 +20,8 @@ class MapManager {
     this.affectedObjects = [];
     this.manzanasResultObjects = [];
     this.localidadResultObjects = [];
-    this.drawingPath = null;
-    this.drawingPolyline = null;
-    this.drawingClickListener = null;
-    this.drawingDblClickListener = null;
-    this.rectangle = null;
-    this.rectangleStart = null;
-    this.rectangleClickListener = null;
     this.infoWindow = null;
     this.editingEnabled = false;
-
-    this.createDrawingControls();
-  }
-
-  createDrawingControls() {
-    const control = document.createElement('div');
-    control.className = 'map-drawing-controls';
-
-    const polygonButton = document.createElement('button');
-    polygonButton.textContent = 'Dibujar polígono';
-    polygonButton.className = 'map-control-button';
-    polygonButton.type = 'button';
-    polygonButton.addEventListener('click', () => this.startPolygonDrawing());
-
-    const rectangleButton = document.createElement('button');
-    rectangleButton.textContent = 'Dibujar rectángulo';
-    rectangleButton.className = 'map-control-button';
-    rectangleButton.type = 'button';
-    rectangleButton.addEventListener('click', () => this.startRectangleDrawing());
-
-    control.appendChild(polygonButton);
-    control.appendChild(rectangleButton);
-    this.map.controls[google.maps.ControlPosition.TOP_RIGHT].push(control);
-  }
-
-  startPolygonDrawing() {
-    this.stopDrawing();
-    this.drawingPath = [];
-    this.drawingPolyline = new google.maps.Polyline({
-      map: this.map,
-      path: this.drawingPath,
-      strokeColor: '#1565c0',
-      strokeOpacity: 1,
-      strokeWeight: 4
-    });
-
-    this.drawingClickListener = this.map.addListener('click', (event) => {
-      if (!event?.latLng) return;
-      this.drawingPath.push(event.latLng);
-      this.drawingPolyline.setPath(this.drawingPath);
-    });
-
-    this.drawingDblClickListener = this.map.addListener('dblclick', () => {
-      this.finishPolygonDrawing();
-    });
-  }
-
-  finishPolygonDrawing() {
-    if (!this.drawingPath || this.drawingPath.length < 3) {
-      this.stopDrawing();
-      return;
-    }
-
-    const polygon = new google.maps.Polygon({
-      map: this.map,
-      paths: this.drawingPath,
-      strokeColor: '#1565c0',
-      strokeOpacity: 1,
-      strokeWeight: 4,
-      fillColor: '#cfe0fb',
-      fillOpacity: 0.25,
-      editable: true
-    });
-
-    this.editablePolygons.push(polygon);
-    this.stopDrawing();
-  }
-
-  startRectangleDrawing() {
-    this.stopDrawing();
-
-    this.rectangle = new google.maps.Rectangle({
-      map: this.map,
-      strokeColor: '#1565c0',
-      strokeOpacity: 1,
-      strokeWeight: 4,
-      fillColor: '#cfe0fb',
-      fillOpacity: 0.25,
-      editable: true,
-      draggable: false
-    });
-
-    this.rectangleStart = null;
-
-    this.rectangleClickListener = this.map.addListener('click', (event) => {
-      if (!event?.latLng) return;
-
-      if (!this.rectangleStart) {
-        this.rectangleStart = event.latLng;
-        return;
-      }
-
-      const bounds = new google.maps.LatLngBounds(
-        this.rectangleStart,
-        event.latLng
-      );
-
-      this.rectangle.setBounds(bounds);
-      this.stopDrawing();
-    });
-  }
-
-  stopDrawing() {
-    if (this.drawingClickListener) {
-      google.maps.event.removeListener(this.drawingClickListener);
-      this.drawingClickListener = null;
-    }
-
-    if (this.drawingDblClickListener) {
-      google.maps.event.removeListener(this.drawingDblClickListener);
-      this.drawingDblClickListener = null;
-    }
-
-    if (this.rectangleClickListener) {
-      google.maps.event.removeListener(this.rectangleClickListener);
-      this.rectangleClickListener = null;
-    }
-
-    if (this.drawingPolyline) {
-      this.drawingPolyline.setMap(null);
-      this.drawingPolyline = null;
-    }
-
-    this.drawingPath = null;
-    this.rectangleStart = null;
   }
 
   // ------------------------------------------------------------
@@ -463,7 +331,7 @@ class MapManager {
             const content =
               `<strong>Manzana ${p.manzana ?? ''}</strong><br>` +
               `Sección: ${p.seccion ?? '-'}<br>` +
-              `Lista Nominal: ${p.LN ?? '-'}<br>` +
+              `Lista Nominal: ${p.LN ?? p.ln ?? '-'}<br>` +
               `% dentro de la zona afectada: ${pct}%`;
             this.showInfoWindow(polygon, content);
           });
@@ -505,7 +373,7 @@ class MapManager {
         const content =
           `<strong>Localidad: ${p.localidad ?? ''}</strong><br>` +
           `Sección: ${p.seccion ?? '-'}<br>` +
-          `Lista Nominal: ${p.LN ?? '-'}`;
+          `Lista Nominal: ${p.LN ?? p.ln ?? '-'}`;
         this.showInfoWindow(marker, content);
       });
 
@@ -540,12 +408,7 @@ class MapManager {
     this.clearObjects(this.manzanasResultObjects);
     this.clearObjects(this.localidadResultObjects);
 
-    if (this.rectangle) {
-      this.rectangle.setMap(null);
-      this.rectangle = null;
-    }
-
-    this.stopDrawing();
+    this.editingEnabled = false;
 
     if (this.infoWindow) {
       this.infoWindow.close();
