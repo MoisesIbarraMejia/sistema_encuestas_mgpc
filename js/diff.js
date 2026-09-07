@@ -57,5 +57,30 @@ const Diff = (() => {
     }
   }
 
-  return { computeAffectedGeometry, isUnchanged, toFeature };
+  // % del área de "feature" que cae dentro de "referencia" (0-100).
+  // Se usa para recalcular en el cliente el porcentaje de afectación de
+  // cada manzana, en vez de confiar ciegamente en el valor que devuelve
+  // la Spatial API (que en la práctica ha estado devolviendo 100% fijo).
+  // Devuelve null si no se pudo calcular (geometría inválida, etc.),
+  // para que quien lo use pueda decidir un valor de respaldo.
+  function computeOverlapPercentage(featureGeoJSON, referenciaGeoJSON) {
+    try {
+      const feature = toFeature(featureGeoJSON);
+      const referencia = toFeature(referenciaGeoJSON);
+      if (!feature || !referencia) return null;
+
+      const areaFeature = turf.area(feature);
+      if (!(areaFeature > 0)) return 0;
+
+      const interseccion = turf.intersect(feature, referencia);
+      if (!interseccion) return 0;
+
+      const areaInterseccion = turf.area(interseccion);
+      return Math.max(0, Math.min(100, (areaInterseccion / areaFeature) * 100));
+    } catch (e) {
+      return null;
+    }
+  }
+
+  return { computeAffectedGeometry, isUnchanged, toFeature, computeOverlapPercentage };
 })();

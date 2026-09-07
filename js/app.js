@@ -344,6 +344,30 @@ async function analizar() {
     state.manzanasResult = manzanasResp;
     state.localidadResult = localidadResp;
 
+    // La Spatial API debería devolver, por manzana, qué % de su área cae
+    // dentro de la zona afectada — pero en la práctica ha estado devolviendo
+    // 100% fijo (ver captura de ejemplo). Como el frontend ya tiene tanto la
+    // geometría de cada manzana como la de la zona afectada, se recalcula
+    // aquí con Turf.js y se sobreescribe porcentaje_afectado con el valor
+    // real. Si por alguna razón no se puede calcular (geometría inválida),
+    // se conserva el valor que mandó la API como respaldo.
+    let huboRecalculo = false;
+
+    manzanasResp.features.forEach((f) => {
+      if (!f?.geometry || !state.affectedFeature) return;
+
+      const recalculado = Diff.computeOverlapPercentage(
+        f.geometry,
+        state.affectedFeature
+      );
+
+      if (recalculado !== null) {
+        f.properties = f.properties || {};
+        f.properties.porcentaje_afectado = recalculado;
+        huboRecalculo = true;
+      }
+    });
+
     mapManager.showManzanasResult(manzanasResp);
     mapManager.showLocalidadResult(localidadResp);
 
@@ -393,10 +417,16 @@ async function analizar() {
       nManzanas,
       nLocalidades,
       sample,
-      modelo
+      modelo,
+      censusThreshold: params.censusThreshold
     });
 
-    setStatus('Análisis completado.', 'ok');
+    setStatus(
+      huboRecalculo
+        ? 'Análisis completado. (% de afectación por manzana recalculado localmente con Turf.js — ver nota en Resultados.)'
+        : 'Análisis completado.',
+      'ok'
+    );
 
   } catch (e) {
     setStatus(
@@ -426,7 +456,8 @@ function renderResultados({
   nManzanas,
   nLocalidades,
   sample,
-  modelo
+  modelo,
+  censusThreshold
 }) {
   document.getElementById('panel-resultados').hidden = false;
 
@@ -452,7 +483,8 @@ function renderResultados({
     })}<br>
     Método aplicado: <span class="${badgeClass}">${metodoLabel}</span><br>
     <b>Encuestas requeridas: ${sample.n.toLocaleString('es-MX')}</b><br>
-    Modelo de encuesta: ${modelo.label}
+    Modelo de encuesta: ${modelo.label}<br>
+    <span style="font-size:11px;color:#777;">Fórmula de Cochran (Z=${CONFIG.SAMPLING.Z}, p=q=${CONFIG.SAMPLING.p}, d=${CONFIG.SAMPLING.d}) aplicada directamente sobre la población afectada real, con censo si N≤${censusThreshold} — corrección propuesta al reparto proporcional en cascada del Documento Rector.</span>
   `;
 
   const tbodyManzanas =
