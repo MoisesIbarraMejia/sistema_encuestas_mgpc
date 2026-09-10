@@ -418,7 +418,7 @@ async function analizar() {
       nLocalidades,
       sample,
       modelo,
-      censusThreshold: params.censusThreshold
+      params
     });
 
     setStatus(
@@ -457,7 +457,7 @@ function renderResultados({
   nLocalidades,
   sample,
   modelo,
-  censusThreshold
+  params
 }) {
   document.getElementById('panel-resultados').hidden = false;
 
@@ -484,7 +484,7 @@ function renderResultados({
     Método aplicado: <span class="${badgeClass}">${metodoLabel}</span><br>
     <b>Encuestas requeridas: ${sample.n.toLocaleString('es-MX')}</b><br>
     Modelo de encuesta: ${modelo.label}<br>
-    <span style="font-size:11px;color:#777;">Fórmula de Cochran (Z=${CONFIG.SAMPLING.Z}, p=q=${CONFIG.SAMPLING.p}, d=${CONFIG.SAMPLING.d}) aplicada directamente sobre la población afectada real, con censo si N≤${censusThreshold} — corrección propuesta al reparto proporcional en cascada del Documento Rector.</span>
+    <span style="font-size:11px;color:#777;">Fórmula de Cochran (Z=${params.Z}, p=q=${params.p}, d=${params.d}) aplicada directamente sobre la población afectada real, con censo si N≤${params.censusThreshold} — corrección propuesta al reparto proporcional en cascada del Documento Rector.</span>
   `;
 
   const tbodyManzanas =

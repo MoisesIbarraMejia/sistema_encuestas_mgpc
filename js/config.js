@@ -20,14 +20,20 @@ const CONFIG = {
   // Parámetros del muestreo — fórmula de Cochran directa sobre la
   // población afectada + censo mínimo (ver js/sampling.js y
   // Analisis_Muestreo_MGPC2025.xlsx, hoja "3. Propuesta nueva").
-  // Z, p, q, d son los mismos que ya usa el Documento Rector;
-  // censusThreshold=100 es el umbral de censo mínimo de esa propuesta
-  // (ajustable aquí o en vivo desde el panel "4. Parámetros de muestreo").
+  // Z, p, q son los mismos que ya usa el Documento Rector.
+  // d=0.05 (5% de margen de error) es el default para el cálculo LOCAL
+  // por modificación de UT — es el margen estándar en literatura de
+  // muestreo aplicado (Israel 1992; Levy & Lemeshow), a diferencia del
+  // d=0.002 que el Documento Rector usa para el total citadino (398,045
+  // sobre 9,209,944), demasiado estricto para poblaciones locales
+  // pequeñas (obliga a un censo casi completo). Ajustable aquí o en
+  // vivo desde el panel "4. Parámetros de muestreo".
+  // censusThreshold=100 es el umbral de censo mínimo de esa propuesta.
   SAMPLING: {
     Z: 2.58,
     p: 0.5,
     q: 0.5,
-    d: 0.002,
+    d: 0.05,
     censusThreshold: 100
   },
 
