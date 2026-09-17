@@ -20,6 +20,12 @@
 
   <aside class="sidebar">
 
+    <details class="panel" id="postmessage-debug-panel">
+      <summary><h2 style="display:inline">🔌 Integración (postMessage recibido)</h2></summary>
+      <p class="hint">Este panel es solo para pruebas de integración: aquí se ve, en vivo, cada mensaje que llega desde el sistema que embebe esta página (SAM). Ábrelo mientras pruebas para confirmar que el mensaje llega y con qué datos.</p>
+      <div id="postmessage-debug" style="font-family:monospace;font-size:11px;max-height:160px;overflow:auto;background:#fafafa;border:1px solid #eee;padding:6px;"></div>
+    </details>
+
     <section class="panel">
       <h2>1. Seleccionar Unidad Territorial</h2>
       <input type="text" id="ut-search" placeholder="Escribe la clave de la UT (ej. 05-030)…" autocomplete="off">
@@ -114,6 +120,7 @@
 <script src="js/diff.js"></script>
 <script src="js/modeloEncuesta.js"></script>
 <script src="js/mapManager.js"></script>
+<script src="js/postmessage.js"></script>
 <script src="js/app.js"></script>
 
 <!-- Google Maps JavaScript API -->

@@ -568,6 +568,32 @@ function exportarCSV() {
   URL.revokeObjectURL(url);
 }
 
+// ---------------- Integración vía postMessage ----------------
+
+// Se llama cuando PostMessageBridge recibe datos válidos del sistema
+// externo (ver js/postmessage.js). Simula lo que haría la persona a
+// mano: escribe la clave de UT y da clic en "Cargar UT", y selecciona
+// el tipo de caso si vino un valor reconocido.
+function aplicarDatosExternos({ cveUt, tipoCasoId }) {
+  if (cveUt) {
+    const utSearch = document.getElementById('ut-search');
+    utSearch.value = cveUt;
+    utSearch.dispatchEvent(new Event('input'));
+    document.getElementById('btn-cargar-ut').click();
+  }
+
+  if (tipoCasoId) {
+    const sel = document.getElementById('sel-tipo-caso');
+    const opcionExiste = Array.from(sel.options).some(
+      (o) => o.value === tipoCasoId
+    );
+    if (opcionExiste) {
+      sel.value = tipoCasoId;
+      sel.dispatchEvent(new Event('change'));
+    }
+  }
+}
+
 // ---------------- Init ----------------
 
 async function initAppMap() {
@@ -575,6 +601,7 @@ async function initAppMap() {
   populateTipoCasoSelect();
   populateParamInputs();
   wireEvents();
+  PostMessageBridge.init(aplicarDatosExternos);
 }
 
 function initMap() {
