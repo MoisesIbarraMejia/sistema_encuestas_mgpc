@@ -106,6 +106,8 @@ input[type="text"], input[list], input[type="number"], select {
   line-height: 1.4;
 }
 .info-box.hidden { display: none; }
+.hidden { display: none; }
+.panel-disabled { opacity: 0.45; pointer-events: none; }
 
 .param-grid {
   display: grid;
