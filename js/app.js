@@ -186,6 +186,62 @@ async function fusionarUTsInvolucradas() {
   }
 }
 
+// ---------------- Referencia visual según capa ----------------
+
+function actualizarReferenciaUI() {
+  const label = document.getElementById('lbl-referencia');
+
+  if (!label) return;
+
+  label.textContent =
+    state.capaAfectacion === 'seccion'
+      ? 'Mostrar secciones de referencia (contexto visual)'
+      : 'Mostrar manzanas de referencia (contexto visual)';
+}
+
+async function loadReferenceLayer() {
+  try {
+    const original = mapManager.getOriginalGeoJSON();
+
+    if (!original?.geometry) {
+      throw new Error('La UT seleccionada no tiene una geometría válida.');
+    }
+
+    const esSeccion = state.capaAfectacion === 'seccion';
+    const etiqueta = esSeccion ? 'secciones' : 'manzanas';
+
+    setStatus(
+      `Cargando ${etiqueta} de referencia (buffer ${CONFIG.MAP.referenceBufferMeters} m)…`
+    );
+
+    const fc = esSeccion
+      ? await Api.seccionesDeReferencia(original.geometry)
+      : await Api.manzanasDeReferencia(original.geometry);
+
+    if (esSeccion) {
+      mapManager.showReferenceSecciones(fc);
+    } else {
+      mapManager.showReferenceManzanas(fc);
+    }
+
+    state.referenceLoaded = true;
+
+    setStatus(
+      `${etiqueta.charAt(0).toUpperCase() + etiqueta.slice(1)} de referencia cargadas: ${fc.count ?? fc.features?.length ?? 0}.`,
+      'ok'
+    );
+
+  } catch (e) {
+    state.referenceLoaded = false;
+
+    setStatus(
+      'Error al cargar la capa de referencia: ' + e.message,
+      'error'
+    );
+  }
+}
+
+// Se ejecuta cada vez que cambia el tipo de caso o se termina de
 // Se ejecuta cada vez que cambia el tipo de caso o se termina de
 // cargar una UT: aplica el perfil correspondiente (ver
 // CONFIG.CASOS_PERFIL) — decide si hace falta editar el límite a mano,
@@ -209,6 +265,7 @@ async function aplicarPerfilYCalcular() {
 
   pendienteInfo.classList.add('hidden');
   state.capaAfectacion = perfil.capa;
+  actualizarReferenciaUI();
 
   if (!state.selectedUT) {
     // Todavía no hay UT cargada: solo se deja preparado el modo de
@@ -218,7 +275,7 @@ async function aplicarPerfilYCalcular() {
   }
 
   if (perfil.targetGeometry === 'zona_afectada') {
-    // Inclusión de manzanas/secciones: la geometría objetivo depende
+    // Inclusión/exclusión de manzanas/secciones: la geometría objetivo depende
     // de que la persona edite el límite y calcule la zona afectada.
     if (state.affectedFeature) resetDownstreamState();
     setEditarLimiteHabilitado(true);
@@ -256,6 +313,7 @@ function bloquearCamposExternos() {
 }
 
 function wireEvents() {
+  actualizarReferenciaUI();
   const utSearch = document.getElementById('ut-search');
   const btnCargarUT = document.getElementById('btn-cargar-ut');
   const btnEditar = document.getElementById('btn-editar');
@@ -270,7 +328,13 @@ function wireEvents() {
 
   document
     .getElementById('sel-tipo-caso')
-    .addEventListener('change', aplicarPerfilYCalcular);
+    .addEventListener('change', async () => {
+      await aplicarPerfilYCalcular();
+
+      if (document.getElementById('chk-referencia').checked && state.selectedUT) {
+        await loadReferenceLayer();
+      }
+    });
 
   btnCargarUT.addEventListener('click', async () => {
     const cve = normalizeCveUt(utSearch.value);
@@ -328,14 +392,14 @@ function wireEvents() {
         'ok'
       );
 
-      if (chkReferencia.checked) {
-        await loadReferenceManzanas();
-      }
-
       // Decide, según el tipo de caso ya elegido (o el que llegue por
       // postMessage), si hay que editar el límite a mano o si la
       // geometría objetivo se puede fijar sola (UT completa / fusión).
       await aplicarPerfilYCalcular();
+
+      if (chkReferencia.checked) {
+        await loadReferenceLayer();
+      }
 
     } catch (e) {
       state.selectedUT = null;
@@ -354,11 +418,7 @@ function wireEvents() {
     if (!state.selectedUT) return;
 
     if (chkReferencia.checked) {
-      if (!state.referenceLoaded) {
-        await loadReferenceManzanas();
-      } else {
-        mapManager.toggleReferenceVisible(true);
-      }
+      await loadReferenceLayer();
     } else {
       mapManager.toggleReferenceVisible(false);
     }
@@ -463,7 +523,7 @@ function wireEvents() {
   btnExportar.addEventListener('click', exportarCSV);
 }
 
-async function loadReferenceManzanas() {
+async function loadReferenceLayer() {
   try {
     setStatus('Cargando manzanas de referencia…');
 
