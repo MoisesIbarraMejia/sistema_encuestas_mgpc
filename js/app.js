@@ -555,29 +555,6 @@ function wireEvents() {
   btnExportar.addEventListener('click', exportarCSV);
 }
 
-async function loadReferenceLayer() {
-  try {
-    setStatus('Cargando manzanas de referencia…');
-
-    const original = mapManager.getOriginalGeoJSON();
-    const fc = await Api.manzanasDeReferencia(original.geometry);
-
-    mapManager.showReferenceManzanas(fc);
-    state.referenceLoaded = true;
-
-    setStatus(
-      `Manzanas de referencia cargadas: ${fc.count ?? fc.features.length}.`,
-      'ok'
-    );
-
-  } catch (e) {
-    setStatus(
-      'Error al cargar manzanas de referencia: ' + e.message,
-      'error'
-    );
-  }
-}
-
 async function analizar() {
   const btnAnalizar = document.getElementById('btn-analizar');
 
