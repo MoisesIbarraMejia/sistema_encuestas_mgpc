@@ -335,11 +335,11 @@ class MapManager {
 
         pathSets.forEach((paths) => {
           const polygon = this.createPolygon(paths, {
-            strokeColor: esSeccion ? '#6B7280' : '#8A3880',
+            strokeColor: esSeccion ? '#C06A00' : '#8A3880',
             strokeOpacity: 0.85,
-            strokeWeight: esSeccion ? 1.4 : 1.2,
-            fillColor: esSeccion ? '#6B7280' : '#8A3880',
-            fillOpacity: esSeccion ? 0.025 : 0.05,
+            strokeWeight: esSeccion ? 1.2 : 1.2,
+            fillColor: esSeccion ? '#C06A00' : '#8A3880',
+            fillOpacity: esSeccion ? 0.05 : 0.05,
             clickable: false,
             zIndex: 1
           });
