@@ -12,7 +12,7 @@ const CONFIG = {
   // Nombres de tablas usadas por la Spatial API
   TABLES: {
     uts: 'uts_mgpc',
-    secciones: 'secciones_uts',
+    secciones: 'secciones',
     manzana: 'manzana',
     localidad: 'localidad'
   },
