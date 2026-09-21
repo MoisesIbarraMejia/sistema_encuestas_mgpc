@@ -651,21 +651,11 @@ async function analizar() {
     const tipoCaso =
       document.getElementById('sel-tipo-caso').value;
 
-    const modelo = ModeloEncuesta.determinarModelo(
-      tipoCaso,
-      {
-        existeCopaco:
-          document.getElementById('chk-copaco').checked,
-        causaIdentidadCultural:
-          document.getElementById('chk-identidad').checked,
-        esDesempate:
-          document.getElementById('chk-desempate').checked,
-        esSolicitudCiudadana:
-          document.getElementById('chk-solicitud').checked,
-        esActualizacionCartografica:
-          document.getElementById('chk-actualizacion').checked
-      }
-    );
+    // Los checkboxes de contexto (COPACO, identidad cultural, desempate,
+    // solicitud ciudadana, actualización cartográfica) se quitaron de
+    // la interfaz; determinarModelo() usa sus defaults (todo false) y
+    // sugiere el modelo base según el tipo de caso.
+    const modelo = ModeloEncuesta.determinarModelo(tipoCaso);
 
     renderModeloSugerido(modelo);
 

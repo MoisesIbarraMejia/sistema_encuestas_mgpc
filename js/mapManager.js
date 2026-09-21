@@ -350,7 +350,7 @@ class MapManager {
         const p = feature.properties || {};
         const html = esSeccion
           ? `Sección: ${p.seccion ?? '-'}`
-          : `LN: ${p.LN ?? p.ln ?? '-'}<br>Manzana: ${p.manzana ?? '-'}<br>Sección: ${p.seccion ?? '-'}`;
+          : `Manzana: ${p.manzana ?? '-'}<br>Sección: ${p.seccion ?? '-'}<br>LN: ${p.LN ?? p.ln ?? '-'}`;
 
         const label = this.createFeatureLabel(
           feature,
@@ -456,7 +456,7 @@ class MapManager {
         const p = feature.properties || {};
         const label = this.createFeatureLabel(
           feature,
-          `LN: ${p.LN ?? p.ln ?? '-'}<br>Manzana: ${p.manzana ?? '-'}<br>Sección: ${p.seccion ?? '-'}`,
+          `Manzana: ${p.manzana ?? '-'}<br>Sección: ${p.seccion ?? '-'}<br>LN: ${p.LN ?? p.ln ?? '-'}`,
           'label-manzana'
         );
 
