@@ -120,7 +120,7 @@ const PostMessageBridge = (() => {
       // que esto funcionara y ves este mensaje, probablemente falta
       // agregar tu origen a ALLOWED_ORIGINS arriba.
       logDebug(
-        `⚠️ Mensaje ignorado: origen "${event.origin}" no está en ALLOWED_ORIGINS.`,
+        ` Mensaje ignorado: origen "${event.origin}" no está en ALLOWED_ORIGINS.`,
         event.data,
         true
       );
@@ -164,7 +164,7 @@ const PostMessageBridge = (() => {
       raw
     };
 
-    logDebug('✅ Datos recibidos y traducidos correctamente:', lastReceived);
+    logDebug(' Datos recibidos y traducidos correctamente:', lastReceived);
 
     if (typeof onDataReceived === 'function') {
       onDataReceived(lastReceived);
@@ -173,7 +173,7 @@ const PostMessageBridge = (() => {
 
   function logDebug(msg, data, isWarning = false) {
     console.log(
-      isWarning ? '%c[postMessage] ⚠️' : '%c[postMessage]',
+      isWarning ? '%c[postMessage] ' : '%c[postMessage]',
       isWarning ? 'color:#b02a37;font-weight:bold;' : 'color:#5b3aa6;font-weight:bold;',
       msg,
       data !== undefined ? data : ''
