@@ -101,6 +101,25 @@ const Api = (() => {
   }
 
   // ============================================================
+  // SECCIONES DE REFERENCIA CON BUFFER
+  // ============================================================
+
+  function seccionesDeReferencia(
+    geometry,
+    bufferMeters = CONFIG.MAP.referenceBufferMeters
+  ) {
+    return intersect(
+      CONFIG.TABLES.secciones,
+      {
+        geometry,
+        mode: 'intersects',
+        includePercentage: false,
+        bufferMeters
+      }
+    );
+  }
+
+  // ============================================================
   // SECCIONES
   // ============================================================
 
@@ -220,6 +239,7 @@ const Api = (() => {
     cacheStore,
     intersect,
     manzanasDeReferencia,
+    seccionesDeReferencia,
     manzanasAfectadas,
     localidadesAfectadas,
     seccionesAfectadas
