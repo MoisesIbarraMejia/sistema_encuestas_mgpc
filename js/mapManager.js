@@ -10,46 +10,64 @@
 // API v3): se posiciona sola en cada draw() usando la proyección del
 // mapa, y no intercepta clics (pointer-events: none en el CSS) para
 // no tapar el polígono que tiene debajo.
+//
+// La clase se define de forma PEREZOSA (ensureMapLabelOverlayClass)
+// en vez de con "class MapLabelOverlay extends google.maps.OverlayView"
+// a nivel de archivo: ese "extends" se evalúa en cuanto el script se
+// carga, y como el script de Google Maps se carga async con
+// callback=initMap, en ese momento "google" todavía no existe —
+// tronaba con "google is not defined" y dejaba sin definir todo lo
+// que venía después en el archivo (incluida la clase MapManager).
+// Aquí se define hasta que MapManager se construye (dentro de
+// initMap(), cuando "google" ya existe seguro).
 // ============================================================
-class MapLabelOverlay extends google.maps.OverlayView {
-  constructor(position, html, map, className = '') {
-    super();
-    this.position = position;
-    this.html = html;
-    this.className = className;
-    this.div = null;
-    this.setMap(map);
-  }
+let MapLabelOverlay = null;
 
-  onAdd() {
-    this.div = document.createElement('div');
-    this.div.className = `map-feature-label ${this.className}`.trim();
-    this.div.innerHTML = this.html;
-    this.getPanes().overlayLayer.appendChild(this.div);
-  }
+function ensureMapLabelOverlayClass() {
+  if (MapLabelOverlay) return;
 
-  draw() {
-    if (!this.div) return;
-    const projection = this.getProjection();
-    if (!projection) return;
-
-    const point = projection.fromLatLngToDivPixel(this.position);
-    if (!point) return;
-
-    this.div.style.left = `${point.x}px`;
-    this.div.style.top = `${point.y}px`;
-  }
-
-  onRemove() {
-    if (this.div?.parentNode) {
-      this.div.parentNode.removeChild(this.div);
+  MapLabelOverlay = class extends google.maps.OverlayView {
+    constructor(position, html, map, className = '') {
+      super();
+      this.position = position;
+      this.html = html;
+      this.className = className;
+      this.div = null;
+      this.setMap(map);
     }
-    this.div = null;
-  }
+
+    onAdd() {
+      this.div = document.createElement('div');
+      this.div.className = `map-feature-label ${this.className}`.trim();
+      this.div.innerHTML = this.html;
+      this.getPanes().overlayLayer.appendChild(this.div);
+    }
+
+    draw() {
+      if (!this.div) return;
+      const projection = this.getProjection();
+      if (!projection) return;
+
+      const point = projection.fromLatLngToDivPixel(this.position);
+      if (!point) return;
+
+      this.div.style.left = `${point.x}px`;
+      this.div.style.top = `${point.y}px`;
+    }
+
+    onRemove() {
+      if (this.div?.parentNode) {
+        this.div.parentNode.removeChild(this.div);
+      }
+      this.div = null;
+    }
+  };
 }
 
 class MapManager {
   constructor(elementId) {
+    ensureMapLabelOverlayClass();
+
     this.map = new google.maps.Map(document.getElementById(elementId), {
       center: { lat: CONFIG.MAP.center[0], lng: CONFIG.MAP.center[1] },
       zoom: CONFIG.MAP.zoom,
