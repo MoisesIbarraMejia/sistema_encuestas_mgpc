@@ -109,6 +109,31 @@ input[type="text"], input[list], input[type="number"], select {
 .hidden { display: none; }
 .panel-disabled { opacity: 0.45; pointer-events: none; }
 
+.map-feature-label {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(0, 0, 0, 0.25);
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-family: Arial, Helvetica, sans-serif;
+  font-size: 10px;
+  line-height: 1.3;
+  color: #222;
+  white-space: nowrap;
+  text-align: center;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+  pointer-events: none; /* no debe tapar los clics sobre el polígono */
+}
+.map-feature-label.label-manzana { border-color: rgba(192, 0, 0, 0.55); }
+.map-feature-label.label-seccion { border-color: rgba(192, 106, 0, 0.55); }
+.map-feature-label.label-referencia {
+  background: rgba(255, 255, 255, 0.75);
+  color: #555;
+  font-size: 9px;
+  box-shadow: none;
+}
+
 .param-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;

@@ -3,6 +3,51 @@
 // Google Maps + edición de polígonos
 // ============================================================
 
+// ============================================================
+// MapLabelOverlay — etiqueta de texto (HTML) anclada a un punto del
+// mapa. Google Maps no trae un "tooltip" nativo multilínea, así que
+// se implementa como un OverlayView estándar (patrón oficial de la
+// API v3): se posiciona sola en cada draw() usando la proyección del
+// mapa, y no intercepta clics (pointer-events: none en el CSS) para
+// no tapar el polígono que tiene debajo.
+// ============================================================
+class MapLabelOverlay extends google.maps.OverlayView {
+  constructor(position, html, map, className = '') {
+    super();
+    this.position = position;
+    this.html = html;
+    this.className = className;
+    this.div = null;
+    this.setMap(map);
+  }
+
+  onAdd() {
+    this.div = document.createElement('div');
+    this.div.className = `map-feature-label ${this.className}`.trim();
+    this.div.innerHTML = this.html;
+    this.getPanes().overlayLayer.appendChild(this.div);
+  }
+
+  draw() {
+    if (!this.div) return;
+    const projection = this.getProjection();
+    if (!projection) return;
+
+    const point = projection.fromLatLngToDivPixel(this.position);
+    if (!point) return;
+
+    this.div.style.left = `${point.x}px`;
+    this.div.style.top = `${point.y}px`;
+  }
+
+  onRemove() {
+    if (this.div?.parentNode) {
+      this.div.parentNode.removeChild(this.div);
+    }
+    this.div = null;
+  }
+}
+
 class MapManager {
   constructor(elementId) {
     this.map = new google.maps.Map(document.getElementById(elementId), {
@@ -142,6 +187,28 @@ class MapManager {
     });
   }
 
+  // Crea una etiqueta de texto centrada en el centroide (turf.centroid)
+  // del feature. Devuelve null si no se pudo calcular (geometría
+  // inválida) en vez de lanzar, para no tumbar el resto del renderizado.
+  createFeatureLabel(feature, html, className) {
+    try {
+      const centroid = turf.centroid(feature);
+      const [lng, lat] = centroid.geometry.coordinates;
+
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+
+      return new MapLabelOverlay(
+        new google.maps.LatLng(lat, lng),
+        html,
+        this.map,
+        className
+      );
+    } catch (error) {
+      console.warn('No se pudo calcular la etiqueta del feature:', error);
+      return null;
+    }
+  }
+
   // ------------------------------------------------------------
   // CARGAR UT ORIGINAL + COPIA EDITABLE
   // ------------------------------------------------------------
@@ -261,6 +328,19 @@ class MapManager {
 
           this.referenceObjects.push(polygon);
         });
+
+        const p = feature.properties || {};
+        const html = esSeccion
+          ? `Sección: ${p.seccion ?? '-'}`
+          : `LN: ${p.LN ?? p.ln ?? '-'}<br>Manzana: ${p.manzana ?? '-'}<br>Sección: ${p.seccion ?? '-'}`;
+
+        const label = this.createFeatureLabel(
+          feature,
+          html,
+          esSeccion ? 'label-seccion label-referencia' : 'label-manzana label-referencia'
+        );
+
+        if (label) this.referenceObjects.push(label);
       } catch (error) {
         console.warn(
           esSeccion
@@ -354,6 +434,15 @@ class MapManager {
 
           this.manzanasResultObjects.push(polygon);
         });
+
+        const p = feature.properties || {};
+        const label = this.createFeatureLabel(
+          feature,
+          `LN: ${p.LN ?? p.ln ?? '-'}<br>Manzana: ${p.manzana ?? '-'}<br>Sección: ${p.seccion ?? '-'}`,
+          'label-manzana'
+        );
+
+        if (label) this.manzanasResultObjects.push(label);
       } catch (error) {
         console.warn('Manzana resultado omitida por geometría inválida:', error);
       }
@@ -397,6 +486,15 @@ class MapManager {
 
           this.seccionesResultObjects.push(polygon);
         });
+
+        const p = feature.properties || {};
+        const label = this.createFeatureLabel(
+          feature,
+          `Sección: ${p.seccion ?? '-'}`,
+          'label-seccion'
+        );
+
+        if (label) this.seccionesResultObjects.push(label);
       } catch (error) {
         console.warn('Sección resultado omitida por geometría inválida:', error);
       }
