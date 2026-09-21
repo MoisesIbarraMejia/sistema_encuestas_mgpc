@@ -34,18 +34,11 @@
         <input type="checkbox" id="chk-referencia">
         Mostrar manzanas de referencia (contexto visual)
       </label>
+      <p class="hint hidden" id="lock-note">🔒 Clave de UT y tipo de caso recibidos automáticamente del sistema SAM — bloqueados para edición manual.</p>
     </section>
 
     <section class="panel">
-      <h2>2. Editar propuesta de límite</h2>
-      <p class="hint">Carga la UT primero. Habilita la edición, arrastra los vértices del polígono azul para proponer el nuevo límite y luego bloquea la edición para poder calcular la zona afectada.</p>
-      <button id="btn-editar" class="btn" disabled>Habilitar edición de vértices</button>
-      <button id="btn-calcular-zona" class="btn" disabled>Calcular zona afectada</button>
-      <div id="zona-afectada-info" class="info-box hidden"></div>
-    </section>
-
-    <section class="panel">
-      <h2>3. Clasificar el caso</h2>
+      <h2>2. Clasificar el caso</h2>
       <label for="sel-tipo-caso">Tipo de caso</label>
       <select id="sel-tipo-caso"></select>
 
@@ -56,6 +49,15 @@
       <label class="checkbox-row"><input type="checkbox" id="chk-actualizacion"> ¿Es actualización cartográfica?</label>
 
       <div id="modelo-sugerido" class="info-box hidden"></div>
+      <div id="caso-pendiente-info" class="info-box hidden"></div>
+    </section>
+
+    <section class="panel" id="panel-editar-limite">
+      <h2>3. Editar propuesta de límite</h2>
+      <p class="hint" id="editar-limite-hint">Carga la UT primero. Habilita la edición, arrastra los vértices del polígono azul para proponer el nuevo límite y luego bloquea la edición para poder calcular la zona afectada.</p>
+      <button id="btn-editar" class="btn" disabled>Habilitar edición de vértices</button>
+      <button id="btn-calcular-zona" class="btn" disabled>Calcular zona afectada</button>
+      <div id="zona-afectada-info" class="info-box hidden"></div>
     </section>
 
     <details class="panel">
@@ -78,10 +80,18 @@
       <h2>Resultados</h2>
       <div class="result-summary" id="result-summary"></div>
 
-      <h3>Manzanas afectadas</h3>
-      <div class="table-scroll">
+      <h3 id="titulo-tabla-manzanas">Manzanas afectadas</h3>
+      <div class="table-scroll" id="wrap-tabla-manzanas">
         <table id="tabla-manzanas">
           <thead><tr><th>Manzana</th><th>Sección</th><th>LN</th><th>% afectado</th><th>LN ponderada</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
+      <div class="table-scroll hidden" id="wrap-tabla-secciones">
+        <h3>Secciones afectadas</h3>
+        <table id="tabla-secciones">
+          <thead><tr><th>Sección</th><th>LN</th><th>% afectado</th><th>LN ponderada</th></tr></thead>
           <tbody></tbody>
         </table>
       </div>

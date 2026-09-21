@@ -6,10 +6,14 @@
 
 const state = {
   selectedUT: null,
-  affectedFeature: null,
+  affectedFeature: null, // geometría objetivo del análisis (original, merge o zona editada, según el caso)
   referenceLoaded: false,
   manzanasResult: null,
-  localidadResult: null
+  localidadResult: null,
+  seccionesResult: null,
+  capaAfectacion: 'manzana', // 'manzana' | 'seccion' — según el tipo de caso
+  utInvolucradas: [], // [{claveUT, idSeccxut}] recibidas por postMessage, para Fusión
+  bloqueadoPorExterno: false // true si UT/tipo de caso vinieron por postMessage
 };
 
 let mapManager = null;
@@ -73,6 +77,7 @@ function resetDownstreamState() {
   state.affectedFeature = null;
   state.manzanasResult = null;
   state.localidadResult = null;
+  state.seccionesResult = null;
   state.referenceLoaded = false;
 
   document.getElementById('zona-afectada-info').classList.add('hidden');
@@ -81,6 +86,173 @@ function resetDownstreamState() {
   document.getElementById('btn-analizar').disabled = true;
 
   mapManager.clearDownstream();
+}
+
+// ---------------- Comportamiento por tipo de caso ----------------
+
+// Habilita/deshabilita el paso "3. Editar propuesta de límite" y avisa
+// por qué, cuando el tipo de caso no lo necesita (la fórmula usa la UT
+// completa o una fusión, no una edición manual del límite).
+function setEditarLimiteHabilitado(habilitado, motivo) {
+  const panel = document.getElementById('panel-editar-limite');
+  const hint = document.getElementById('editar-limite-hint');
+  const btnEditar = document.getElementById('btn-editar');
+  const btnCalcularZona = document.getElementById('btn-calcular-zona');
+
+  panel.classList.toggle('panel-disabled', !habilitado);
+
+  if (habilitado) {
+    hint.textContent =
+      'Carga la UT primero. Habilita la edición, arrastra los vértices del polígono azul para proponer el nuevo límite y luego bloquea la edición para poder calcular la zona afectada.';
+  } else {
+    btnEditar.disabled = true;
+    btnCalcularZona.disabled = true;
+    hint.textContent =
+      motivo ||
+      'Este tipo de caso no requiere editar el límite manualmente.';
+  }
+}
+
+// Fija la geometría sobre la que se va a calcular la N (población
+// afectada) y la muestra en el mapa, sin pasar por el flujo manual de
+// "editar y calcular zona afectada".
+function establecerGeometriaObjetivo(feature, etiqueta) {
+  state.affectedFeature = feature;
+  mapManager.showAffected(feature);
+
+  const areaM2 = turf.area(feature);
+  const info = document.getElementById('zona-afectada-info');
+  info.classList.remove('hidden');
+  info.innerHTML =
+    `Geometría objetivo del análisis (${etiqueta}): <b>${areaM2.toLocaleString('es-MX', {
+      maximumFractionDigits: 0
+    })} m²</b>. Lista para analizar.`;
+
+  document.getElementById('btn-analizar').disabled = false;
+  setStatus(
+    `Geometría objetivo calculada automáticamente (${etiqueta}). Puedes analizar.`,
+    'ok'
+  );
+}
+
+// Caso Fusión: descarga las UTs involucradas (recibidas por
+// postMessage en utInvolucradas) y las une (turf.union) con la UT
+// principal ya cargada.
+async function fusionarUTsInvolucradas() {
+  if (!state.selectedUT) return;
+
+  if (!state.utInvolucradas.length) {
+    setStatus(
+      'Fusión requiere la lista de UTs involucradas (utInvolucradas), recibida por postMessage. No se recibió ninguna, así que no se puede calcular automáticamente.',
+      'error'
+    );
+    return;
+  }
+
+  try {
+    setStatus(
+      `Descargando ${state.utInvolucradas.length} UT(s) involucrada(s) para la fusión…`
+    );
+
+    let mergedGeometry = state.selectedUT.geometry;
+
+    for (const involucrada of state.utInvolucradas) {
+      const cve = normalizeCveUt(involucrada.claveUT);
+      if (!cve) continue;
+
+      const response = await Api.getUTByCve(cve);
+      const feature =
+        response?.type === 'Feature'
+          ? response
+          : response?.features?.[0] || null;
+
+      if (!feature?.geometry) {
+        throw new Error(
+          `No se pudo obtener la geometría de la UT involucrada ${cve}.`
+        );
+      }
+
+      mergedGeometry = turf.union(
+        turf.feature(mergedGeometry),
+        turf.feature(feature.geometry)
+      ).geometry;
+    }
+
+    const mergedFeature = turf.feature(mergedGeometry);
+    establecerGeometriaObjetivo(mergedFeature, 'fusión de UTs');
+
+  } catch (e) {
+    setStatus('Error al fusionar las UTs involucradas: ' + e.message, 'error');
+  }
+}
+
+// Se ejecuta cada vez que cambia el tipo de caso o se termina de
+// cargar una UT: aplica el perfil correspondiente (ver
+// CONFIG.CASOS_PERFIL) — decide si hace falta editar el límite a mano,
+// si la geometría objetivo se fija sola (UT completa / fusión), y
+// contra qué capa (manzana o sección) se va a calcular la N.
+async function aplicarPerfilYCalcular() {
+  const tipoCasoId = document.getElementById('sel-tipo-caso').value;
+  const perfil = CONFIG.CASOS_PERFIL[tipoCasoId];
+  const pendienteInfo = document.getElementById('caso-pendiente-info');
+
+  if (!perfil) return;
+
+  if (perfil.pendiente) {
+    pendienteInfo.classList.remove('hidden');
+    pendienteInfo.innerHTML =
+      '⏳ Este tipo de caso (Combinación / Otros) todavía no tiene metodología de cálculo definida en el sistema. Está pendiente de definir — por ahora no es posible editar el límite ni analizar.';
+    setEditarLimiteHabilitado(false, 'Pendiente de definir metodología para este tipo de caso.');
+    document.getElementById('btn-analizar').disabled = true;
+    return;
+  }
+
+  pendienteInfo.classList.add('hidden');
+  state.capaAfectacion = perfil.capa;
+
+  if (!state.selectedUT) {
+    // Todavía no hay UT cargada: solo se deja preparado el modo de
+    // edición; el resto se resuelve cuando llegue la UT.
+    setEditarLimiteHabilitado(perfil.editable);
+    return;
+  }
+
+  if (perfil.targetGeometry === 'zona_afectada') {
+    // Inclusión de manzanas/secciones: la geometría objetivo depende
+    // de que la persona edite el límite y calcule la zona afectada.
+    if (state.affectedFeature) resetDownstreamState();
+    setEditarLimiteHabilitado(true);
+    document.getElementById('btn-editar').disabled = false;
+    return;
+  }
+
+  // targetGeometry es 'original' o 'merge': no hace falta editar nada,
+  // se fija sola la geometría objetivo.
+  setEditarLimiteHabilitado(
+    false,
+    'Este tipo de caso aplica la fórmula sobre ' +
+      (perfil.targetGeometry === 'merge'
+        ? 'la fusión de las UTs involucradas'
+        : 'toda la Unidad Territorial') +
+      ', no sobre una edición manual del límite.'
+  );
+
+  if (perfil.targetGeometry === 'original') {
+    establecerGeometriaObjetivo(state.selectedUT, 'UT completa');
+  } else if (perfil.targetGeometry === 'merge') {
+    await fusionarUTsInvolucradas();
+  }
+}
+
+// Bloquea (solo lectura) la clave de UT y el tipo de caso cuando
+// llegaron por postMessage del sistema SAM, para que no se puedan
+// modificar a mano en ese flujo.
+function bloquearCamposExternos() {
+  state.bloqueadoPorExterno = true;
+  document.getElementById('ut-search').disabled = true;
+  document.getElementById('btn-cargar-ut').disabled = true;
+  document.getElementById('sel-tipo-caso').disabled = true;
+  document.getElementById('lock-note').classList.remove('hidden');
 }
 
 function wireEvents() {
@@ -95,6 +267,10 @@ function wireEvents() {
   utSearch.addEventListener('input', () => {
     btnCargarUT.disabled = normalizeCveUt(utSearch.value) === '';
   });
+
+  document
+    .getElementById('sel-tipo-caso')
+    .addEventListener('change', aplicarPerfilYCalcular);
 
   btnCargarUT.addEventListener('click', async () => {
     const cve = normalizeCveUt(utSearch.value);
@@ -142,12 +318,8 @@ function wireEvents() {
 
       mapManager.loadOriginalUT(feature);
 
-      btnEditar.disabled = false;
       btnEditar.textContent = 'Habilitar edición de vértices';
       btnEditar.classList.remove('btn-primary');
-      // "Calcular zona" solo se habilita después de confirmar/bloquear la edición
-      // (ver el manejador de btnEditar), para que los dos pasos sean consecutivos.
-      btnCalcularZona.disabled = true;
 
       const nombre = feature.properties?.nombre || '';
 
@@ -160,6 +332,11 @@ function wireEvents() {
         await loadReferenceManzanas();
       }
 
+      // Decide, según el tipo de caso ya elegido (o el que llegue por
+      // postMessage), si hay que editar el límite a mano o si la
+      // geometría objetivo se puede fijar sola (UT completa / fusión).
+      await aplicarPerfilYCalcular();
+
     } catch (e) {
       state.selectedUT = null;
       btnEditar.disabled = true;
@@ -169,7 +346,7 @@ function wireEvents() {
         'error'
       );
     } finally {
-      btnCargarUT.disabled = false;
+      btnCargarUT.disabled = state.bloqueadoPorExterno;
     }
   });
 
@@ -332,28 +509,35 @@ async function analizar() {
 
     const cacheId = cacheResp.cache_id;
 
+    const usaSecciones = state.capaAfectacion === 'seccion';
+
     setStatus(
-      'Calculando manzanas y localidades afectadas…'
+      usaSecciones
+        ? 'Calculando secciones y localidades afectadas…'
+        : 'Calculando manzanas y localidades afectadas…'
     );
 
-    const [manzanasResp, localidadResp] = await Promise.all([
-      Api.manzanasAfectadas({ cacheId }),
+    const [afectacionResp, localidadResp] = await Promise.all([
+      usaSecciones
+        ? Api.seccionesAfectadas({ cacheId })
+        : Api.manzanasAfectadas({ cacheId }),
       Api.localidadesAfectadas({ cacheId })
     ]);
 
-    state.manzanasResult = manzanasResp;
     state.localidadResult = localidadResp;
+    state.manzanasResult = usaSecciones ? null : afectacionResp;
+    state.seccionesResult = usaSecciones ? afectacionResp : null;
 
-    // La Spatial API debería devolver, por manzana, qué % de su área cae
-    // dentro de la zona afectada — pero en la práctica ha estado devolviendo
-    // 100% fijo (ver captura de ejemplo). Como el frontend ya tiene tanto la
-    // geometría de cada manzana como la de la zona afectada, se recalcula
-    // aquí con Turf.js y se sobreescribe porcentaje_afectado con el valor
-    // real. Si por alguna razón no se puede calcular (geometría inválida),
-    // se conserva el valor que mandó la API como respaldo.
+    // La Spatial API debería devolver, por manzana/sección, qué % de su
+    // área cae dentro de la geometría objetivo — pero en la práctica ha
+    // estado devolviendo 100% fijo (ver captura de ejemplo). Como el
+    // frontend ya tiene ambas geometrías, se recalcula aquí con Turf.js
+    // y se sobreescribe porcentaje_afectado con el valor real. Si por
+    // alguna razón no se puede calcular (geometría inválida), se
+    // conserva el valor que mandó la API como respaldo.
     let huboRecalculo = false;
 
-    manzanasResp.features.forEach((f) => {
+    afectacionResp.features.forEach((f) => {
       if (!f?.geometry || !state.affectedFeature) return;
 
       const recalculado = Diff.computeOverlapPercentage(
@@ -368,16 +552,20 @@ async function analizar() {
       }
     });
 
-    mapManager.showManzanasResult(manzanasResp);
+    if (usaSecciones) {
+      mapManager.showSeccionesResult(afectacionResp);
+    } else {
+      mapManager.showManzanasResult(afectacionResp);
+    }
     mapManager.showLocalidadResult(localidadResp);
 
-    let nManzanas = 0;
+    let nAfectacion = 0;
 
-    manzanasResp.features.forEach((f) => {
+    afectacionResp.features.forEach((f) => {
       const ln = getLN(f.properties);
       const pct =
         (f.properties.porcentaje_afectado ?? 100) / 100;
-      nManzanas += ln * pct;
+      nAfectacion += ln * pct;
     });
 
     let nLocalidades = 0;
@@ -386,7 +574,7 @@ async function analizar() {
       nLocalidades += getLN(f.properties);
     });
 
-    const N = nManzanas + nLocalidades;
+    const N = nAfectacion + nLocalidades;
 
     const params = readParamsFromUI();
     const sample = Sampling.computeSampleSize(N, params);
@@ -414,8 +602,9 @@ async function analizar() {
 
     renderResultados({
       N,
-      nManzanas,
+      nAfectacion,
       nLocalidades,
+      usaSecciones,
       sample,
       modelo,
       params
@@ -423,7 +612,7 @@ async function analizar() {
 
     setStatus(
       huboRecalculo
-        ? 'Análisis completado. (% de afectación por manzana recalculado localmente con Turf.js — ver nota en Resultados.)'
+        ? `Análisis completado. (% de afectación por ${usaSecciones ? 'sección' : 'manzana'} recalculado localmente con Turf.js — ver nota en Resultados.)`
         : 'Análisis completado.',
       'ok'
     );
@@ -453,8 +642,9 @@ function renderModeloSugerido(modelo) {
 
 function renderResultados({
   N,
-  nManzanas,
+  nAfectacion,
   nLocalidades,
+  usaSecciones,
   sample,
   modelo,
   params
@@ -475,7 +665,7 @@ function renderResultados({
     Población afectada total (N): <b>${N.toLocaleString('es-MX', {
       maximumFractionDigits: 1
     })}</b><br>
-    &nbsp;&nbsp;· Manzanas (ponderada por % de área): ${nManzanas.toLocaleString('es-MX', {
+    &nbsp;&nbsp;· ${usaSecciones ? 'Secciones' : 'Manzanas'} (ponderada por % de área): ${nAfectacion.toLocaleString('es-MX', {
       maximumFractionDigits: 1
     })}<br>
     &nbsp;&nbsp;· Localidades: ${nLocalidades.toLocaleString('es-MX', {
@@ -487,26 +677,51 @@ function renderResultados({
     <span style="font-size:11px;color:#777;">Fórmula de Cochran (Z=${params.Z}, p=q=${params.p}, d=${params.d}) aplicada directamente sobre la población afectada real, con censo si N≤${params.censusThreshold} — corrección propuesta al reparto proporcional en cascada del Documento Rector.</span>
   `;
 
-  const tbodyManzanas =
-    document.querySelector('#tabla-manzanas tbody');
-  tbodyManzanas.innerHTML = '';
+  document.getElementById('wrap-tabla-manzanas').classList.toggle('hidden', usaSecciones);
+  document.getElementById('wrap-tabla-secciones').classList.toggle('hidden', !usaSecciones);
 
-  state.manzanasResult.features.forEach((f) => {
-    const p = f.properties;
-    const ln = getLN(p);
-    const pct = p.porcentaje_afectado ?? 100;
-    const ponderada = ln * (pct / 100);
+  if (!usaSecciones) {
+    const tbodyManzanas =
+      document.querySelector('#tabla-manzanas tbody');
+    tbodyManzanas.innerHTML = '';
 
-    const tr = document.createElement('tr');
-    tr.innerHTML =
-      `<td>${p.manzana ?? '-'}</td>` +
-      `<td>${p.seccion ?? '-'}</td>` +
-      `<td>${ln}</td>` +
-      `<td>${pct}%</td>` +
-      `<td>${ponderada.toFixed(1)}</td>`;
+    state.manzanasResult.features.forEach((f) => {
+      const p = f.properties;
+      const ln = getLN(p);
+      const pct = p.porcentaje_afectado ?? 100;
+      const ponderada = ln * (pct / 100);
 
-    tbodyManzanas.appendChild(tr);
-  });
+      const tr = document.createElement('tr');
+      tr.innerHTML =
+        `<td>${p.manzana ?? '-'}</td>` +
+        `<td>${p.seccion ?? '-'}</td>` +
+        `<td>${ln}</td>` +
+        `<td>${pct}%</td>` +
+        `<td>${ponderada.toFixed(1)}</td>`;
+
+      tbodyManzanas.appendChild(tr);
+    });
+  } else {
+    const tbodySecciones =
+      document.querySelector('#tabla-secciones tbody');
+    tbodySecciones.innerHTML = '';
+
+    state.seccionesResult.features.forEach((f) => {
+      const p = f.properties;
+      const ln = getLN(p);
+      const pct = p.porcentaje_afectado ?? 100;
+      const ponderada = ln * (pct / 100);
+
+      const tr = document.createElement('tr');
+      tr.innerHTML =
+        `<td>${p.seccion ?? '-'}</td>` +
+        `<td>${ln}</td>` +
+        `<td>${pct}%</td>` +
+        `<td>${ponderada.toFixed(1)}</td>`;
+
+      tbodySecciones.appendChild(tr);
+    });
+  }
 
   const tbodyLocalidades =
     document.querySelector('#tabla-localidades tbody');
@@ -525,7 +740,7 @@ function renderResultados({
 }
 
 function exportarCSV() {
-  if (!state.manzanasResult && !state.localidadResult) return;
+  if (!state.manzanasResult && !state.seccionesResult && !state.localidadResult) return;
 
   const lines = [];
   lines.push(
@@ -539,6 +754,16 @@ function exportarCSV() {
 
     lines.push(
       `manzana,${p.manzana ?? ''},${p.seccion ?? ''},${ln},${pct},${(ln * pct / 100).toFixed(2)}`
+    );
+  });
+
+  (state.seccionesResult?.features || []).forEach((f) => {
+    const p = f.properties;
+    const ln = getLN(p);
+    const pct = p.porcentaje_afectado ?? 100;
+
+    lines.push(
+      `seccion,${p.seccion ?? ''},${p.seccion ?? ''},${ln},${pct},${(ln * pct / 100).toFixed(2)}`
     );
   });
 
@@ -572,15 +797,12 @@ function exportarCSV() {
 
 // Se llama cuando PostMessageBridge recibe datos válidos del sistema
 // externo (ver js/postmessage.js). Simula lo que haría la persona a
-// mano: escribe la clave de UT y da clic en "Cargar UT", y selecciona
-// el tipo de caso si vino un valor reconocido.
-function aplicarDatosExternos({ cveUt, tipoCasoId }) {
-  if (cveUt) {
-    const utSearch = document.getElementById('ut-search');
-    utSearch.value = cveUt;
-    utSearch.dispatchEvent(new Event('input'));
-    document.getElementById('btn-cargar-ut').click();
-  }
+// mano: selecciona el tipo de caso, escribe la clave de UT y da clic
+// en "Cargar UT" (lo que a su vez dispara aplicarPerfilYCalcular() al
+// terminar), y guarda utInvolucradas para el caso Fusión. Al final
+// bloquea ambos campos para que no se puedan modificar a mano.
+function aplicarDatosExternos({ cveUt, tipoCasoId, utInvolucradas }) {
+  state.utInvolucradas = Array.isArray(utInvolucradas) ? utInvolucradas : [];
 
   if (tipoCasoId) {
     const sel = document.getElementById('sel-tipo-caso');
@@ -589,9 +811,20 @@ function aplicarDatosExternos({ cveUt, tipoCasoId }) {
     );
     if (opcionExiste) {
       sel.value = tipoCasoId;
-      sel.dispatchEvent(new Event('change'));
     }
   }
+
+  if (cveUt) {
+    const utSearch = document.getElementById('ut-search');
+    utSearch.value = cveUt;
+    utSearch.dispatchEvent(new Event('input'));
+    document.getElementById('btn-cargar-ut').click();
+  }
+
+  // Se bloquea DESPUÉS de disparar el clic: un <button disabled> no
+  // dispara 'click', pero deshabilitarlo después de ya haberlo
+  // disparado no cancela la carga en curso.
+  bloquearCamposExternos();
 }
 
 // ---------------- Init ----------------

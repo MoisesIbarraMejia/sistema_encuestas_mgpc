@@ -48,6 +48,55 @@ const CONFIG = {
     referenceBufferMeters: 50
   },
 
+  // ============================================================
+  // Perfil de comportamiento por tipo de caso (ids de
+  // ModeloEncuesta.TIPOS_CASO). Define, para cada uno:
+  //   targetGeometry: sobre qué geometría se aplica la fórmula
+  //     - 'original'      -> el polígono completo de la UT cargada
+  //     - 'merge'         -> unión (turf.union) de la UT + las UTs
+  //                          involucradas recibidas por postMessage
+  //     - 'zona_afectada' -> la diferencia simétrica que resulta de
+  //                          editar manualmente el polígono (flujo
+  //                          "3. Editar propuesta de límite")
+  //   capa: contra qué tabla se intersecta para sacar la N
+  //     - 'manzana' | 'seccion'
+  //   editable: si el paso "Editar propuesta de límite" debe quedar
+  //     habilitado (solo tiene sentido cuando targetGeometry es
+  //     'zona_afectada'; para 'original'/'merge' se deshabilita
+  //     porque no afecta el cálculo y dejarlo activo sería engañoso)
+  //   pendiente: true -> metodología aún no definida (Combinación,
+  //     Otros); el sistema bloquea el análisis y lo deja explícito.
+  // ============================================================
+  CASOS_PERFIL: {
+    division: {
+      targetGeometry: 'original',
+      capa: 'manzana',
+      editable: false
+    },
+    fusion: {
+      targetGeometry: 'merge',
+      capa: 'manzana',
+      editable: false
+    },
+    nomenclatura: {
+      targetGeometry: 'original',
+      capa: 'manzana',
+      editable: false
+    },
+    inc_exc_manzanas: {
+      targetGeometry: 'zona_afectada',
+      capa: 'manzana',
+      editable: true
+    },
+    inc_exc_secciones: {
+      targetGeometry: 'zona_afectada',
+      capa: 'seccion',
+      editable: true
+    },
+    combinacion: { pendiente: true },
+    otros: { pendiente: true }
+  },
+
   // TTL de la geometría de zona afectada guardada en la API
   CACHE_TTL_MINUTES: 120
 };

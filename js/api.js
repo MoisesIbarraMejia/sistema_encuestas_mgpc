@@ -198,6 +198,22 @@ const Api = (() => {
     );
   }
 
+  // ============================================================
+  // SECCIONES AFECTADAS (caso IV: inclusión/exclusión de secciones)
+  // ============================================================
+
+  function seccionesAfectadas({ geometry, cacheId }) {
+    return intersect(
+      CONFIG.TABLES.secciones,
+      {
+        geometry,
+        cacheId,
+        mode: 'intersects',
+        includePercentage: true
+      }
+    );
+  }
+
   return {
     getUTByCve,
     getSeccionesDeUT,
@@ -205,7 +221,8 @@ const Api = (() => {
     intersect,
     manzanasDeReferencia,
     manzanasAfectadas,
-    localidadesAfectadas
+    localidadesAfectadas,
+    seccionesAfectadas
   };
 
 })();

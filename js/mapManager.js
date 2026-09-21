@@ -20,6 +20,7 @@ class MapManager {
     this.affectedObjects = [];
     this.manzanasResultObjects = [];
     this.localidadResultObjects = [];
+    this.seccionesResultObjects = [];
     this.infoWindow = null;
     this.editingEnabled = false;
   }
@@ -345,6 +346,49 @@ class MapManager {
   }
 
   // ------------------------------------------------------------
+  // RESULTADOS: SECCIONES (caso IV: inclusión/exclusión de secciones)
+  // ------------------------------------------------------------
+
+  showSeccionesResult(featureCollection) {
+    this.clearObjects(this.seccionesResultObjects);
+
+    if (!featureCollection?.features) return;
+
+    featureCollection.features.forEach((feature) => {
+      if (!feature?.geometry) return;
+
+      try {
+        const pct = feature.properties?.porcentaje_afectado ?? 100;
+        const pathSets = this.geoJsonToGooglePaths(feature.geometry);
+
+        pathSets.forEach((paths) => {
+          const polygon = this.createPolygon(paths, {
+            strokeColor: '#C06A00',
+            strokeOpacity: 1,
+            strokeWeight: 1,
+            fillColor: '#ffa550',
+            fillOpacity: Math.min(0.85, Math.max(0.20, pct / 100)),
+            zIndex: 5
+          });
+
+          polygon.addListener('click', () => {
+            const p = feature.properties || {};
+            const content =
+              `<strong>Sección: ${p.seccion ?? ''}</strong><br>` +
+              `Lista Nominal: ${p.LN ?? p.ln ?? '-'}<br>` +
+              `% dentro de la zona afectada: ${pct}%`;
+            this.showInfoWindow(polygon, content);
+          });
+
+          this.seccionesResultObjects.push(polygon);
+        });
+      } catch (error) {
+        console.warn('Sección resultado omitida por geometría inválida:', error);
+      }
+    });
+  }
+
+  // ------------------------------------------------------------
   // RESULTADOS: LOCALIDADES
   // ------------------------------------------------------------
 
@@ -398,6 +442,7 @@ class MapManager {
     this.clearObjects(this.affectedObjects);
     this.clearObjects(this.manzanasResultObjects);
     this.clearObjects(this.localidadResultObjects);
+    this.clearObjects(this.seccionesResultObjects);
   }
 
   clearAll() {
@@ -407,6 +452,7 @@ class MapManager {
     this.clearObjects(this.affectedObjects);
     this.clearObjects(this.manzanasResultObjects);
     this.clearObjects(this.localidadResultObjects);
+    this.clearObjects(this.seccionesResultObjects);
 
     this.editingEnabled = false;
 

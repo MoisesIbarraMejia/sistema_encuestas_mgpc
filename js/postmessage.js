@@ -36,30 +36,59 @@ const PostMessageBridge = (() => {
   ];
 
   // 2) Nombres de los campos DENTRO del objeto que manda el sistema
-  // externo (event.data). El valor de la derecha es la llave real que
-  // usa el sistema SAM; cámbialo aquí cuando te lo confirmen — no hace
-  // falta tocar nada más en este archivo ni en app.js.
+  // externo (event.data). Confirmado con un payload real recibido:
+  //   {"tipo":"INIT_FASE_2","idCaso":53,"claveUT":"05-021",
+  //    "clasificacion":"FUSIÓN",
+  //    "utInvolucradas":[{"idSeccxut":38,"claveUT":"02-017"}]}
   const FIELD_MAP = {
-    cveUt: 'cve_ut', // <- clave de la Unidad Territorial (ej. "05-030")
-    tipoCaso: 'tipo_caso', // <- tipo de caso (I, II, III, IV, V, VI, VII / 1-7)
-    caseId: 'id' // <- folio/expediente, solo informativo por ahora
+    tipo: 'tipo', // <- tipo de mensaje, ej. "INIT_FASE_2"
+    cveUt: 'claveUT', // <- clave de la Unidad Territorial (ej. "05-021")
+    tipoCaso: 'clasificacion', // <- tipo de caso en texto (ej. "FUSIÓN")
+    caseId: 'idCaso', // <- folio/expediente, solo informativo por ahora
+    utInvolucradas: 'utInvolucradas' // <- [{claveUT, idSeccxut}], usado en Fusión
   };
 
-  // 3) Traduce el valor de "tipo_caso" que manda el sistema externo al
-  // id interno que usa <select id="sel-tipo-caso"> (ver
-  // js/modeloEncuesta.js, TIPOS_CASO). Se incluyen de entrada varias
-  // formas razonables (numeral romano, número, nombre) para que algo
-  // funcione desde el primer día de pruebas; borra las que no apliquen
-  // y ajusta las que sí en cuanto sepan el valor exacto.
-  const TIPO_CASO_MAP = {
-    I: 'division', '1': 'division', division: 'division',
-    II: 'fusion', '2': 'fusion', fusion: 'fusion',
-    III: 'nomenclatura', '3': 'nomenclatura', nomenclatura: 'nomenclatura',
-    IV: 'inc_exc_secciones', '4': 'inc_exc_secciones', inc_exc_secciones: 'inc_exc_secciones',
-    V: 'inc_exc_manzanas', '5': 'inc_exc_manzanas', inc_exc_manzanas: 'inc_exc_manzanas',
-    VI: 'combinacion', '6': 'combinacion', combinacion: 'combinacion',
-    VII: 'otros', '7': 'otros', otros: 'otros'
-  };
+  // 3) Traduce el valor de "clasificacion" que manda el sistema externo
+  // (texto libre, ej. "FUSIÓN") al id interno que usa
+  // <select id="sel-tipo-caso"> (ver js/modeloEncuesta.js, TIPOS_CASO:
+  // 'division','fusion','nomenclatura','inc_exc_secciones',
+  // 'inc_exc_manzanas','combinacion','otros').
+  //
+  // Se hace por PALABRA CLAVE (no por coincidencia exacta) para no
+  // depender de acentos/mayúsculas exactas del sistema externo. Si el
+  // equipo de SAM confirma que mandan otro texto para algún caso,
+  // agrega la palabra clave correspondiente en KEYWORDS_POR_TIPO.
+  const KEYWORDS_POR_TIPO = [
+    ['division', ['DIVISION']],
+    ['fusion', ['FUSION']],
+    ['nomenclatura', ['NOMENCLATURA']],
+    ['inc_exc_secciones', ['SECCION', 'SECCIONES']],
+    ['inc_exc_manzanas', ['MANZANA', 'MANZANAS']],
+    ['combinacion', ['COMBINA']],
+    ['otros', ['OTRO']]
+  ];
+
+  function normalizarTexto(texto) {
+    return String(texto ?? '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '') // quita acentos
+      .toUpperCase()
+      .trim();
+  }
+
+  function traducirTipoCaso(valorExterno) {
+    if (valorExterno === undefined || valorExterno === null) return null;
+
+    const normalizado = normalizarTexto(valorExterno);
+
+    for (const [id, keywords] of KEYWORDS_POR_TIPO) {
+      if (keywords.some((kw) => normalizado.includes(kw))) {
+        return id;
+      }
+    }
+
+    return null;
+  }
 
   let onDataReceived = null;
   let lastReceived = null;
@@ -107,6 +136,7 @@ const PostMessageBridge = (() => {
     const cveUt = raw[FIELD_MAP.cveUt];
     const tipoCasoRaw = raw[FIELD_MAP.tipoCaso];
     const caseId = raw[FIELD_MAP.caseId];
+    const utInvolucradas = raw[FIELD_MAP.utInvolucradas];
 
     if (cveUt === undefined && tipoCasoRaw === undefined) {
       // Trae otra cosa (otro tipo de mensaje del mismo sistema padre);
@@ -115,18 +145,24 @@ const PostMessageBridge = (() => {
       return;
     }
 
-    const tipoCasoId =
-      tipoCasoRaw !== undefined ? TIPO_CASO_MAP[tipoCasoRaw] ?? null : null;
+    const tipoCasoId = traducirTipoCaso(tipoCasoRaw);
 
     if (tipoCasoRaw !== undefined && tipoCasoId === null) {
       logDebug(
-        ` tipo_caso="${tipoCasoRaw}" no está en TIPO_CASO_MAP — revisa/agrega ese valor en js/postmessage.js.`,
+        `⚠️ clasificacion="${tipoCasoRaw}" no coincide con ninguna palabra clave conocida — revisa/agrega en KEYWORDS_POR_TIPO en js/postmessage.js.`,
         null,
         true
       );
     }
 
-    lastReceived = { cveUt, tipoCasoRaw, tipoCasoId, caseId, raw };
+    lastReceived = {
+      cveUt,
+      tipoCasoRaw,
+      tipoCasoId,
+      caseId,
+      utInvolucradas: Array.isArray(utInvolucradas) ? utInvolucradas : [],
+      raw
+    };
 
     logDebug(' Datos recibidos y traducidos correctamente:', lastReceived);
 
