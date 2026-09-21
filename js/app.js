@@ -8,6 +8,7 @@ const state = {
   selectedUT: null,
   affectedFeature: null, // geometría objetivo del análisis (original, merge o zona editada, según el caso)
   referenceLoaded: false,
+  referenceRequestId: 0,
   manzanasResult: null,
   localidadResult: null,
   seccionesResult: null,
@@ -200,6 +201,9 @@ function actualizarReferenciaUI() {
 }
 
 async function loadReferenceLayer() {
+  const requestId = ++state.referenceRequestId;
+  const capaSolicitada = state.capaAfectacion;
+
   try {
     const original = mapManager.getOriginalGeoJSON();
 
@@ -207,7 +211,7 @@ async function loadReferenceLayer() {
       throw new Error('La UT seleccionada no tiene una geometría válida.');
     }
 
-    const esSeccion = state.capaAfectacion === 'seccion';
+    const esSeccion = capaSolicitada === 'seccion';
     const etiqueta = esSeccion ? 'secciones' : 'manzanas';
 
     setStatus(
@@ -217,6 +221,16 @@ async function loadReferenceLayer() {
     const fc = esSeccion
       ? await Api.seccionesDeReferencia(original.geometry)
       : await Api.manzanasDeReferencia(original.geometry);
+
+    // La respuesta puede llegar después de que el usuario haya
+    // cambiado el tipo de caso. En ese escenario ya no corresponde
+    // dibujar esta capa.
+    if (
+      requestId !== state.referenceRequestId ||
+      capaSolicitada !== state.capaAfectacion
+    ) {
+      return;
+    }
 
     if (esSeccion) {
       mapManager.showReferenceSecciones(fc);
@@ -232,6 +246,14 @@ async function loadReferenceLayer() {
     );
 
   } catch (e) {
+    // No mostrar un error de una petición que ya quedó obsoleta.
+    if (
+      requestId !== state.referenceRequestId ||
+      capaSolicitada !== state.capaAfectacion
+    ) {
+      return;
+    }
+
     state.referenceLoaded = false;
 
     setStatus(
@@ -329,9 +351,16 @@ function wireEvents() {
   document
     .getElementById('sel-tipo-caso')
     .addEventListener('change', async () => {
+      // Invalida cualquier consulta de referencia que siga en vuelo.
+      state.referenceRequestId += 1;
+      state.referenceLoaded = false;
+
       await aplicarPerfilYCalcular();
 
-      if (document.getElementById('chk-referencia').checked && state.selectedUT) {
+      if (
+        document.getElementById('chk-referencia').checked &&
+        state.selectedUT
+      ) {
         await loadReferenceLayer();
       }
     });
@@ -377,6 +406,7 @@ function wireEvents() {
         );
       }
 
+      state.referenceRequestId += 1;
       resetDownstreamState();
       state.selectedUT = feature;
 
@@ -420,6 +450,8 @@ function wireEvents() {
     if (chkReferencia.checked) {
       await loadReferenceLayer();
     } else {
+      state.referenceRequestId += 1;
+      state.referenceLoaded = false;
       mapManager.toggleReferenceVisible(false);
     }
   });
