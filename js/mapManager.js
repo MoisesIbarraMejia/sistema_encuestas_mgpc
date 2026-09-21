@@ -235,10 +235,12 @@ class MapManager {
   // REFERENCIA: MANZANAS
   // ------------------------------------------------------------
 
-  showReferenceManzanas(featureCollection) {
+  showReferenceFeatures(featureCollection, tipoCapa = 'manzana') {
     this.clearObjects(this.referenceObjects);
 
     if (!featureCollection?.features) return;
+
+    const esSeccion = tipoCapa === 'seccion';
 
     featureCollection.features.forEach((feature) => {
       if (!feature?.geometry) return;
@@ -248,11 +250,11 @@ class MapManager {
 
         pathSets.forEach((paths) => {
           const polygon = this.createPolygon(paths, {
-            strokeColor: '#8A3880',
+            strokeColor: esSeccion ? '#6B7280' : '#8A3880',
             strokeOpacity: 0.85,
-            strokeWeight: 1.2,
-            fillColor: '#8a3880',
-            fillOpacity: 0.05,
+            strokeWeight: esSeccion ? 1.4 : 1.2,
+            fillColor: esSeccion ? '#6B7280' : '#8A3880',
+            fillOpacity: esSeccion ? 0.025 : 0.05,
             clickable: false,
             zIndex: 1
           });
@@ -260,9 +262,22 @@ class MapManager {
           this.referenceObjects.push(polygon);
         });
       } catch (error) {
-        console.warn('Manzana de referencia omitida por geometría inválida:', error);
+        console.warn(
+          esSeccion
+            ? 'Sección de referencia omitida por geometría inválida:'
+            : 'Manzana de referencia omitida por geometría inválida:',
+          error
+        );
       }
     });
+  }
+
+  showReferenceManzanas(featureCollection) {
+    this.showReferenceFeatures(featureCollection, 'manzana');
+  }
+
+  showReferenceSecciones(featureCollection) {
+    this.showReferenceFeatures(featureCollection, 'seccion');
   }
 
   // ------------------------------------------------------------
