@@ -27,11 +27,20 @@ function ensureMapLabelOverlayClass() {
   if (MapLabelOverlay) return;
 
   MapLabelOverlay = class extends google.maps.OverlayView {
-    constructor(position, html, map, className = '') {
+    // pane: en qué "pane" de Google Maps se inserta el div de la
+    // etiqueta. Google Maps apila sus panes en un orden fijo:
+    // mapPane < overlayLayer (ahí van los polígonos) < overlayShadow <
+    // overlayMouseTarget < floatPane (el más alto, usado para
+    // InfoWindows/marcadores arrastrables). Una etiqueta en
+    // 'overlayLayer' puede quedar debajo de un polígono dibujado
+    // después; en 'floatPane' siempre queda por encima de todos los
+    // polígonos, sin importar el orden en que se dibujen.
+    constructor(position, html, map, className = '', pane = 'overlayLayer') {
       super();
       this.position = position;
       this.html = html;
       this.className = className;
+      this.pane = pane;
       this.div = null;
       this.setMap(map);
     }
@@ -40,7 +49,7 @@ function ensureMapLabelOverlayClass() {
       this.div = document.createElement('div');
       this.div.className = `map-feature-label ${this.className}`.trim();
       this.div.innerHTML = this.html;
-      this.getPanes().overlayLayer.appendChild(this.div);
+      this.getPanes()[this.pane].appendChild(this.div);
     }
 
     draw() {
@@ -208,7 +217,9 @@ class MapManager {
   // Crea una etiqueta de texto centrada en el centroide (turf.centroid)
   // del feature. Devuelve null si no se pudo calcular (geometría
   // inválida) en vez de lanzar, para no tumbar el resto del renderizado.
-  createFeatureLabel(feature, html, className) {
+  // pane: 'overlayLayer' (default, igual que antes) u 'floatPane' para
+  // que la etiqueta quede por encima de los polígonos.
+  createFeatureLabel(feature, html, className, pane = 'overlayLayer') {
     try {
       const centroid = turf.centroid(feature);
       const [lng, lat] = centroid.geometry.coordinates;
@@ -219,7 +230,8 @@ class MapManager {
         new google.maps.LatLng(lat, lng),
         html,
         this.map,
-        className
+        className,
+        pane
       );
     } catch (error) {
       console.warn('No se pudo calcular la etiqueta del feature:', error);
@@ -457,7 +469,8 @@ class MapManager {
         const label = this.createFeatureLabel(
           feature,
           `Manzana: ${p.manzana ?? '-'}<br>Sección: ${p.seccion ?? '-'}<br>LN: ${p.LN ?? p.ln ?? '-'}`,
-          'label-manzana'
+          'label-manzana',
+          'floatPane'
         );
 
         if (label) this.manzanasResultObjects.push(label);
@@ -509,7 +522,8 @@ class MapManager {
         const label = this.createFeatureLabel(
           feature,
           `Sección: ${p.seccion ?? '-'}`,
-          'label-seccion'
+          'label-seccion',
+          'floatPane'
         );
 
         if (label) this.seccionesResultObjects.push(label);
