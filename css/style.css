@@ -1,18 +1,60 @@
 :root {
+  /* --- Color: marca --- */
   --purple: #4B2E83;
   --purple-dark: #37225f;
+  --purple-light: #efeaf7;
+  --purple-surface: #f6f3fc;
+
+  /* --- Color: semántico --- */
   --red: #C00000;
-  --green: #006100;
-  --gray-bg: #f4f2f8;
-  --border: #ddd6ea;
+  --red-surface: #fdeceb;
+  --green: #0f7a3d;
+  --green-surface: #eaf7ee;
+  --amber: #a15c00;
+
+  /* --- Color: neutrales --- */
+  --text: #201f26;
+  --text-muted: #6c6a78;
+  --text-faint: #9997a3;
+  --border: #e2dcee;
+  --border-strong: #cfc6e6;
+  --surface: #ffffff;
+  --gray-bg: #f5f3fa;
+
+  /* --- Espaciado (base 4px) --- */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 20px;
+  --sp-6: 24px;
+
+  /* --- Radios --- */
+  --radius-sm: 5px;
+  --radius-md: 9px;
+  --radius-lg: 14px;
+
+  /* --- Sombras --- */
+  --shadow-sm: 0 1px 2px rgba(30, 15, 70, .06);
+  --shadow-md: 0 4px 16px rgba(30, 15, 70, .10);
+
+  /* --- Tipografía --- */
+  --font-sans: 'Segoe UI', system-ui, -apple-system, Arial, sans-serif;
+  --text-xs: 11px;
+  --text-sm: 12.5px;
+  --text-md: 13.5px;
+  --text-lg: 15px;
+  --text-xl: 18px;
+
+  --transition: .15s ease;
 }
 
 * { box-sizing: border-box; }
 
 body {
   margin: 0;
-  font-family: 'Segoe UI', Arial, sans-serif;
-  color: #222;
+  font-family: var(--font-sans);
+  color: var(--text);
   background: var(--gray-bg);
   height: 100vh;
   display: flex;
@@ -22,10 +64,20 @@ body {
 .app-header {
   background: var(--purple);
   color: #fff;
-  padding: 12px 20px;
+  padding: var(--sp-3) var(--sp-5);
+  flex-shrink: 0;
 }
-.app-header h1 { margin: 0; font-size: 18px; }
-.app-subtitle { font-size: 12px; opacity: 0.85; }
+.app-header h1 { margin: 0; font-size: var(--text-xl); font-weight: 600; }
+.app-subtitle { font-size: var(--text-xs); opacity: 0.85; }
+
+/* Modo embebido: el sistema que nos aloja (SAM) ya muestra su propio
+   título de fase ("Fase 2. Cálculo de Encuestas"), así que repetir
+   nuestro encabezado aquí es ruido visual y resta alto útil dentro del
+   iframe. Se detecta en app.js (window.self !== window.top) y se
+   aplica la clase .is-embedded al <body>. */
+body.is-embedded .app-header { display: none; }
+body.is-embedded { height: auto; min-height: 100vh; }
+body.is-embedded .app-layout { min-height: 640px; }
 
 .app-layout {
   flex: 1;
@@ -35,78 +87,149 @@ body {
 
 .sidebar {
   width: 380px;
-  min-width: 340px;
+  min-width: 320px;
   overflow-y: auto;
-  background: #fff;
+  background: var(--surface);
   border-right: 1px solid var(--border);
-  padding: 12px;
+  padding: var(--sp-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
 }
 
 .panel {
   border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 12px;
-  margin-bottom: 12px;
-  background: #fff;
+  border-radius: var(--radius-md);
+  padding: var(--sp-3) var(--sp-4);
+  background: var(--surface);
+  transition: border-color var(--transition), box-shadow var(--transition);
 }
-.panel h2 { font-size: 14px; color: var(--purple); margin: 0 0 8px 0; }
-.panel h3 { font-size: 13px; color: var(--purple-dark); margin: 10px 0 4px; }
+.panel h2 { font-size: var(--text-md); color: var(--purple); margin: 0 0 var(--sp-2) 0; font-weight: 600; }
+.panel h3 { font-size: var(--text-sm); color: var(--purple-dark); margin: var(--sp-3) 0 var(--sp-1); font-weight: 600; }
 
-.hint { font-size: 11.5px; color: #666; margin: 4px 0 8px; }
+/* --- Indicador de paso (stepper) --- */
+/* Cada panel numerado (1-4) muestra su número en un badge circular
+   junto al título, para reforzar visualmente el flujo secuencial del
+   trámite y que la persona siempre sepa "en qué paso va". */
+.panel.step { position: relative; }
+.panel.step > summary,
+.panel.step > .panel-head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  cursor: pointer;
+  list-style: none;
+}
+.panel.step > summary::-webkit-details-marker { display: none; }
+.panel.step h2 { margin: 0; flex: 1; }
+
+.step-num {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--purple);
+  color: #fff;
+  font-size: var(--text-xs);
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.panel.step.is-done .step-num { background: var(--green); }
+.panel.step.is-locked .step-num { background: var(--text-faint); }
+.panel.step.is-locked { opacity: .55; }
+
+.hint { font-size: var(--text-xs); color: var(--text-muted); margin: var(--sp-1) 0 var(--sp-2); line-height: 1.45; }
+
+label { font-size: var(--text-sm); color: var(--text); font-weight: 600; display: block; margin-bottom: var(--sp-1); }
 
 input[type="text"], input[list], input[type="number"], select {
   width: 100%;
-  padding: 6px 8px;
-  border: 1px solid var(--border);
-  border-radius: 5px;
-  font-size: 13px;
-  margin-bottom: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-md);
+  margin-bottom: var(--sp-2);
+  font-family: inherit;
+  background: var(--surface);
+  color: var(--text);
+  transition: border-color var(--transition), box-shadow var(--transition);
+}
+input:focus, select:focus {
+  outline: none;
+  border-color: var(--purple);
+  box-shadow: 0 0 0 3px var(--purple-light);
+}
+input:disabled, select:disabled {
+  background: var(--gray-bg);
+  color: var(--text-faint);
+  cursor: not-allowed;
 }
 
 .checkbox-row {
   display: flex;
   align-items: center;
-  gap: 6px;
-  font-size: 12.5px;
-  margin: 6px 0;
+  gap: var(--sp-2);
+  font-size: var(--text-sm);
+  font-weight: 400;
+  margin: var(--sp-2) 0;
   cursor: pointer;
 }
-.checkbox-row input { margin: 0; }
+.checkbox-row input { margin: 0; width: 15px; height: 15px; accent-color: var(--purple); }
 
 .btn {
   width: 100%;
-  padding: 8px 10px;
-  margin: 4px 0;
-  border: 1px solid var(--purple);
-  background: #fff;
+  padding: 9px 12px;
+  margin: var(--sp-1) 0;
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
   color: var(--purple);
-  border-radius: 6px;
-  font-size: 13px;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-md);
+  font-family: inherit;
+  font-weight: 600;
   cursor: pointer;
-  transition: background 0.15s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-2);
+  transition: background var(--transition), border-color var(--transition), box-shadow var(--transition);
 }
-.btn:hover:not(:disabled) { background: #efeaf7; }
-.btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.btn:hover:not(:disabled) { background: var(--purple-light); border-color: var(--purple); }
+.btn:active:not(:disabled) { transform: translateY(1px); }
+.btn:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--purple-light); }
+.btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
 .btn-primary {
   background: var(--purple);
   color: #fff;
+  border-color: var(--purple);
 }
-.btn-primary:hover:not(:disabled) { background: var(--purple-dark); }
+.btn-primary:hover:not(:disabled) { background: var(--purple-dark); border-color: var(--purple-dark); }
 
-.btn-large { font-size: 14px; padding: 10px; font-weight: 600; }
+.btn-ghost {
+  border-color: transparent;
+  background: transparent;
+  color: var(--text-muted);
+}
+.btn-ghost:hover:not(:disabled) { background: var(--gray-bg); border-color: var(--border); color: var(--text); }
+
+.btn-large { font-size: var(--text-lg); padding: 12px; font-weight: 700; }
 
 .info-box {
-  margin-top: 8px;
-  padding: 8px 10px;
-  background: #f6f1ff;
-  border: 1px solid #d9c8f5;
-  border-radius: 6px;
-  font-size: 12px;
-  line-height: 1.4;
+  margin-top: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+  background: var(--purple-surface);
+  border: 1px solid var(--border-strong);
+  border-left: 3px solid var(--purple);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+  line-height: 1.45;
+  color: var(--text);
 }
 .info-box.hidden { display: none; }
-.hidden { display: none; }
+.hidden { display: none !important; }
 .panel-disabled { opacity: 0.45; pointer-events: none; }
 
 .map-feature-label {
@@ -136,79 +259,128 @@ input[type="text"], input[list], input[type="number"], select {
 .param-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 4px 10px;
+  gap: var(--sp-1) var(--sp-3);
 }
-.param-grid label { font-size: 11.5px; color: #444; }
+.param-grid label { font-size: var(--text-xs); color: var(--text-muted); font-weight: 600; }
 
-.status-line { font-size: 11.5px; color: #777; margin-top: 6px; min-height: 14px; }
+.status-line {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  margin-top: var(--sp-2);
+  min-height: 14px;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+}
 .status-line.error { color: var(--red); font-weight: 600; }
 .status-line.ok { color: var(--green); font-weight: 600; }
 
 .result-summary {
-  background: #f8f6fc;
+  background: var(--purple-surface);
   border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 10px;
-  font-size: 13px;
-  line-height: 1.6;
+  border-radius: var(--radius-md);
+  padding: var(--sp-3);
+  font-size: var(--text-md);
+  line-height: 1.65;
 }
 .result-summary b { color: var(--purple); }
-.result-summary .badge-censo { color: var(--green); font-weight: 700; }
-.result-summary .badge-muestreo { color: var(--purple); font-weight: 700; }
+.result-summary .badge-censo {
+  color: var(--green);
+  font-weight: 700;
+  background: var(--green-surface);
+  padding: 1px 7px;
+  border-radius: 4px;
+}
+.result-summary .badge-muestreo {
+  color: var(--purple);
+  font-weight: 700;
+  background: var(--purple-light);
+  padding: 1px 7px;
+  border-radius: 4px;
+}
 
-.table-scroll { max-height: 180px; overflow-y: auto; border: 1px solid var(--border); border-radius: 6px; }
-table { width: 100%; border-collapse: collapse; font-size: 11.5px; }
-th, td { padding: 4px 6px; text-align: right; border-bottom: 1px solid #eee; }
+.table-scroll { max-height: 180px; overflow-y: auto; border: 1px solid var(--border); border-radius: var(--radius-sm); }
+table { width: 100%; border-collapse: collapse; font-size: var(--text-xs); }
+th, td { padding: 5px 7px; text-align: right; border-bottom: 1px solid var(--gray-bg); }
 th:first-child, td:first-child { text-align: left; }
-thead th { position: sticky; top: 0; background: #f0eaf9; color: var(--purple-dark); }
+thead th { position: sticky; top: 0; background: var(--purple-light); color: var(--purple-dark); font-weight: 700; }
+tbody tr:hover { background: var(--purple-surface); }
 
-.map-wrap { flex: 1; position: relative; }
+.map-wrap { flex: 1; position: relative; min-width: 0; }
 #map { height: 100%; width: 100%; }
 
 .legend {
   position: absolute;
   bottom: 14px;
   right: 14px;
-  background: #fff;
+  background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 8px 10px;
-  font-size: 11.5px;
+  border-radius: var(--radius-md);
+  padding: var(--sp-2) var(--sp-3);
+  font-size: var(--text-xs);
   z-index: 1000;
-  box-shadow: 0 1px 4px rgba(0,0,0,0.15);
+  box-shadow: var(--shadow-md);
 }
-.legend div { display: flex; align-items: center; gap: 6px; margin: 2px 0; }
-.swatch { width: 12px; height: 12px; border-radius: 2px; display: inline-block; }
-.swatch-original { background: #fff; border: 2px dashed #4B2E83; }
+.legend div { display: flex; align-items: center; gap: var(--sp-2); margin: 3px 0; }
+.swatch { width: 12px; height: 12px; border-radius: 3px; display: inline-block; flex-shrink: 0; }
+.swatch-original { background: #fff; border: 2px dashed var(--purple); }
 .swatch-editable { background: #cfe0fb; border: 1px solid #1565c0; }
-.swatch-affected { background: #ff6b6b; border: 1px solid #C00000; }
-.swatch-manzana { background: #ff5050; border: 1px solid #C00000; }
-.swatch-localidad { background: #8fd19e; border: 1px solid #006100; border-radius: 50%; }
+.swatch-affected { background: #ff6b6b; border: 1px solid var(--red); }
+.swatch-manzana { background: #ff5050; border: 1px solid var(--red); }
+.swatch-localidad { background: #8fd19e; border: 1px solid var(--green); border-radius: 50%; }
 
 .app-footer {
-  background: #2c2c2c;
-  color: #ccc;
-  font-size: 11.5px;
-  padding: 5px 12px;
+  background: #262530;
+  color: #c9c6d6;
+  font-size: var(--text-xs);
+  padding: 6px 14px;
+  flex-shrink: 0;
 }
+body.is-embedded .app-footer { padding: 4px 14px; }
 
 .map-drawing-controls {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  margin: 10px;
+  gap: var(--sp-2);
+  margin: var(--sp-3);
 }
 
 .map-control-button {
-  background: #fff;
-  border: 1px solid #ccc;
-  border-radius: 4px;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
   padding: 8px 12px;
-  font-size: 13px;
+  font-size: var(--text-md);
+  font-family: inherit;
   cursor: pointer;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+  box-shadow: var(--shadow-sm);
+  transition: background var(--transition);
 }
 
 .map-control-button:hover {
-  background: #f4f4f4;
+  background: var(--purple-light);
+}
+
+/* --- Panel de diagnóstico de integración (postMessage) ---
+   Es una herramienta para desarrolladores, no para la persona que usa
+   el trámite: se mantiene disponible pero visualmente discreta y
+   colapsada, para no competir con el flujo de 4 pasos. */
+#postmessage-debug-panel {
+  background: var(--gray-bg);
+  border-style: dashed;
+}
+#postmessage-debug-panel summary {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  font-weight: 600;
+}
+#postmessage-debug-panel h2 { font-size: var(--text-xs); color: var(--text-muted); }
+
+/* --- Responsivo: cuando el iframe embebido es angosto, el sidebar
+   pasa a ocupar todo el ancho y el mapa se acomoda debajo, en vez de
+   generar scroll horizontal / recortar el panel de pasos. --- */
+@media (max-width: 760px) {
+  .app-layout { flex-direction: column; }
+  .sidebar { width: 100%; min-width: 0; border-right: none; border-bottom: 1px solid var(--border); }
+  .map-wrap { min-height: 420px; }
 }

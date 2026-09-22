@@ -21,20 +21,21 @@
   <aside class="sidebar">
 
     <details class="panel" id="postmessage-debug-panel">
-      <summary><h2 style="display:inline"> Integración (postMessage recibido)</h2></summary>
+      <summary><h2 style="display:inline">🔧 Integración (postMessage recibido)</h2></summary>
       <p class="hint">Este panel es solo para pruebas de integración: aquí se ve, en vivo, cada mensaje que llega desde el sistema que embebe esta página (SAM). Ábrelo mientras pruebas para confirmar que el mensaje llega y con qué datos.</p>
-      <div id="postmessage-debug" style="font-family:monospace;font-size:11px;max-height:160px;overflow:auto;background:#fafafa;border:1px solid #eee;padding:6px;"></div>
+      <div id="postmessage-debug" style="font-family:monospace;font-size:11px;max-height:160px;overflow:auto;background:#fafafa;border:1px solid #eee;padding:6px;border-radius:5px;"></div>
     </details>
 
-    <section class="panel">
-      <h2>1. Seleccionar Unidad Territorial</h2>
+    <section class="panel step" id="panel-paso-1">
+      <div class="panel-head"><span class="step-num">1</span><h2>Seleccionar Unidad Territorial</h2></div>
+      <label for="ut-search" class="hidden">Clave de UT</label>
       <input type="text" id="ut-search" placeholder="Escribe la clave de la UT (ej. 05-030)…" autocomplete="off">
       <button id="btn-cargar-ut" class="btn btn-primary" disabled>Cargar UT en el mapa</button>
       <p class="hint hidden" id="lock-note">🔒 Clave de UT y tipo de caso recibidos automáticamente del sistema SAM — bloqueados para edición manual.</p>
     </section>
 
-    <section class="panel">
-      <h2>2. Clasificar el caso</h2>
+    <section class="panel step" id="panel-paso-2">
+      <div class="panel-head"><span class="step-num">2</span><h2>Clasificar el caso</h2></div>
       <label for="sel-tipo-caso">Tipo de caso</label>
       <select id="sel-tipo-caso"></select>
 
@@ -43,20 +44,20 @@
         <span id="lbl-referencia">Mostrar manzanas de referencia (contexto visual)</span>
       </label>
 
-      <div id="modelo-sugerido" class="info-box hidden"></div>
       <div id="caso-pendiente-info" class="info-box hidden"></div>
     </section>
 
-    <section class="panel" id="panel-editar-limite">
-      <h2>3. Editar propuesta de límite</h2>
+    <section class="panel step" id="panel-editar-limite">
+      <div class="panel-head"><span class="step-num">3</span><h2>Editar propuesta de límite</h2></div>
       <p class="hint" id="editar-limite-hint">Carga la UT primero. Habilita la edición, arrastra los vértices del polígono azul para proponer el nuevo límite y luego bloquea la edición para poder calcular la zona afectada.</p>
       <button id="btn-editar" class="btn" disabled>Habilitar edición de vértices</button>
       <button id="btn-calcular-zona" class="btn" disabled>Calcular zona afectada</button>
       <div id="zona-afectada-info" class="info-box hidden"></div>
     </section>
 
-    <details class="panel">
-      <summary><h2 style="display:inline">4. Parámetros de muestreo</h2></summary>
+    <details class="panel step">
+      <summary><span class="step-num">4</span><h2>Parámetros de muestreo</h2></summary>
+      <p class="hint">Valores por defecto recomendados — ajústalos solo si el caso lo requiere.</p>
       <div class="param-grid">
         <label>Z <input type="number" id="param-z" step="0.01"></label>
         <label>p <input type="number" id="param-p" step="0.01"></label>
@@ -72,7 +73,7 @@
     </section>
 
     <section class="panel" id="panel-resultados" hidden>
-      <h2>Resultados</h2>
+      <h2>✅ Resultados</h2>
       <div class="result-summary" id="result-summary"></div>
 
       <h3 id="titulo-tabla-manzanas">Manzanas afectadas</h3>
