@@ -74,10 +74,16 @@ body {
    título de fase ("Fase 2. Cálculo de Encuestas"), así que repetir
    nuestro encabezado aquí es ruido visual y resta alto útil dentro del
    iframe. Se detecta en app.js (window.self !== window.top) y se
-   aplica la clase .is-embedded al <body>. */
+   aplica la clase .is-embedded al <body>.
+   IMPORTANTE: NO se toca la altura de body/app-layout aquí. body sigue
+   con height:100vh (el 100vh es el alto que el iframe nos da, no el de
+   la ventana del navegador) para que .sidebar conserve su scroll
+   interno (overflow-y:auto). Si aquí se pone height:auto, el documento
+   crece más allá de lo que el iframe muestra y, si el iframe del
+   sistema padre no expone su propia barra de scroll, el contenido de
+   abajo (parámetros, "Analizar", Resultados) queda cortado sin forma
+   de llegar a él — justo el bug que esto corrige. */
 body.is-embedded .app-header { display: none; }
-body.is-embedded { height: auto; min-height: 100vh; }
-body.is-embedded .app-layout { min-height: 640px; }
 
 .app-layout {
   flex: 1;
@@ -89,6 +95,7 @@ body.is-embedded .app-layout { min-height: 640px; }
   width: 380px;
   min-width: 320px;
   overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
   background: var(--surface);
   border-right: 1px solid var(--border);
   padding: var(--sp-3);
