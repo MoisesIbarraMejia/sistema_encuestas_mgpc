@@ -149,7 +149,7 @@ const PostMessageBridge = (() => {
 
     if (tipoCasoRaw !== undefined && tipoCasoId === null) {
       logDebug(
-        `⚠️ clasificacion="${tipoCasoRaw}" no coincide con ninguna palabra clave conocida — revisa/agrega en KEYWORDS_POR_TIPO en js/postmessage.js.`,
+        `clasificacion="${tipoCasoRaw}" no coincide con ninguna palabra clave conocida — revisa/agrega en KEYWORDS_POR_TIPO en js/postmessage.js.`,
         null,
         true
       );
