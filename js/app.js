@@ -82,7 +82,6 @@ function resetDownstreamState() {
   state.referenceLoaded = false;
 
   document.getElementById('zona-afectada-info').classList.add('hidden');
-  document.getElementById('modelo-sugerido').classList.add('hidden');
   document.getElementById('panel-resultados').hidden = true;
   document.getElementById('btn-analizar').disabled = true;
 
@@ -657,8 +656,11 @@ async function analizar() {
     // sugiere el modelo base según el tipo de caso.
     const modelo = ModeloEncuesta.determinarModelo(tipoCaso);
 
-    renderModeloSugerido(modelo);
-
+    // El modelo sugerido ya no se muestra por separado antes del
+    // análisis (duplicaba, de forma prematura, lo que renderResultados()
+    // muestra abajo como "Modelo de encuesta"). La nota de COPACO
+    // también se quitó de aquí: se maneja en otro apartado del sistema
+    // que embebe esta página (SAM), no en este microservicio.
     renderResultados({
       N,
       nAfectacion,
@@ -684,19 +686,6 @@ async function analizar() {
   } finally {
     btnAnalizar.disabled = false;
   }
-}
-
-function renderModeloSugerido(modelo) {
-  const el = document.getElementById('modelo-sugerido');
-  el.classList.remove('hidden');
-
-  el.innerHTML =
-    `<b>Modelo sugerido:</b> ${modelo.label}<br>${modelo.nota}` +
-    (
-      modelo.usaPoblacionAfectada
-        ? ''
-        : '<br><em>Nota: en este caso la encuesta es a integrantes del COPACO, no a la población general — la N calculada abajo es informativa/para desempate, no la cifra directa a encuestar.</em>'
-    );
 }
 
 function renderResultados({
@@ -732,8 +721,8 @@ function renderResultados({
     })}<br>
     Método aplicado: <span class="${badgeClass}">${metodoLabel}</span><br>
     <b>Encuestas requeridas: ${sample.n.toLocaleString('es-MX')}</b><br>
-    Modelo de encuesta: ${modelo.label}<br>
-    <span style="font-size:11px;color:#777;">Fórmula de Cochran (Z=${params.Z}, p=q=${params.p}, d=${params.d}) aplicada directamente sobre la población afectada real, con censo si N≤${params.censusThreshold} — corrección propuesta al reparto proporcional en cascada del Documento Rector.</span>
+    Modelo de encuesta: ${modelo.label} — ${modelo.nota}<br>
+    <span style="font-size:11px;color:var(--text-muted);">Fórmula de Cochran (Z=${params.Z}, p=q=${params.p}, d=${params.d}) aplicada directamente sobre la población afectada real, con censo si N≤${params.censusThreshold} — corrección propuesta al reparto proporcional en cascada del Documento Rector.</span>
   `;
 
   document.getElementById('wrap-tabla-manzanas').classList.toggle('hidden', usaSecciones);
@@ -889,6 +878,21 @@ function aplicarDatosExternos({ cveUt, tipoCasoId, utInvolucradas }) {
 // ---------------- Init ----------------
 
 async function initAppMap() {
+  // Si nos están cargando dentro de un <iframe> (modo microservicio
+  // embebido, ej. dentro de SCCMGPC/SAM), se oculta el encabezado
+  // propio y se ajustan los márgenes: el sistema que nos embebe ya
+  // muestra su propio título de fase, y el espacio dentro del iframe
+  // suele ser más reducido.
+  try {
+    if (window.self !== window.top) {
+      document.body.classList.add('is-embedded');
+    }
+  } catch (e) {
+    // Acceso a window.top bloqueado por política de origen cruzado:
+    // asumimos que si eso pasa, sí estamos embebidos.
+    document.body.classList.add('is-embedded');
+  }
+
   mapManager = new MapManager('map');
   populateTipoCasoSelect();
   populateParamInputs();
