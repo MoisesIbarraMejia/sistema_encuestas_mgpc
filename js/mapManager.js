@@ -337,7 +337,7 @@ class MapManager {
           const polygon = this.createPolygon(paths, {
             strokeColor: esSeccion ? '#C06A00' : '#8A3880',
             strokeOpacity: 0.85,
-            strokeWeight: esSeccion ? 1.2 : 1.2,
+            strokeWeight: esSeccion ? 2 : 1.2,
             fillColor: esSeccion ? '#C06A00' : '#8A3880',
             fillOpacity: esSeccion ? 0.05 : 0.05,
             clickable: false,
