@@ -404,6 +404,22 @@ body.is-embedded .app-footer { padding: 4px 14px; }
 }
 #postmessage-debug-panel summary::-webkit-details-marker { display: none; }
 #postmessage-debug-panel h2 { font-size: var(--text-xs); color: var(--text-muted); }
+#postmessage-envio-debug-panel {
+  background: var(--gray-bg);
+  border-style: dashed;
+}
+#postmessage-envio-debug-panel summary {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  cursor: pointer;
+  list-style: none;
+}
+#postmessage-envio-debug-panel summary::-webkit-details-marker { display: none; }
+#postmessage-envio-debug-panel h2 { font-size: var(--text-xs); color: var(--text-muted); }
 
 /* --- Responsivo: cuando el iframe embebido es angosto, el sidebar
    pasa a ocupar todo el ancho y el mapa se acomoda debajo, en vez de

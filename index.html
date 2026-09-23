@@ -7,10 +7,10 @@
 
 <!-- Turf.js (operaciones geométricas en el cliente) -->
 <script src="https://unpkg.com/@turf/turf@6/turf.min.js"></script>
-<!-- SheetJS (generación de archivos Excel .xlsx en el cliente, para exportar
-     el desglose y para adjuntarlo al postMessage que se le manda al sistema
-     que embebe esta página) -->
-<script src="https://unpkg.com/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<!-- ExcelJS (genera el .xlsx con estilos reales -colores, negritas- en el
+     cliente, para el botón "Exportar resultados" y para el postMessage
+     que se le manda al sistema padre con el Excel adjunto) -->
+<script src="https://unpkg.com/exceljs@4.4.0/dist/exceljs.min.js"></script>
 <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
@@ -31,6 +31,20 @@
       </summary>
       <p class="hint">Este panel es solo para pruebas de integración: aquí se ve, en vivo, cada mensaje que llega desde el sistema que embebe esta página (SAM). Ábrelo mientras pruebas para confirmar que el mensaje llega y con qué datos.</p>
       <div id="postmessage-debug" style="font-family:monospace;font-size:11px;max-height:160px;overflow:auto;background:#fafafa;border:1px solid #eee;padding:6px;border-radius:5px;"></div>
+    </details>
+
+    <!-- APARTADO TEMPORAL — solo para comprobar, durante las pruebas de
+         integración, que el postMessage de Fase 2 (con el Excel adjunto)
+         sí se está enviando al sistema padre. Se puede quitar cuando el
+         sistema padre ya tenga su propio listener funcionando y esto se
+         haya verificado en un ambiente real. -->
+    <details class="panel" id="postmessage-envio-debug-panel">
+      <summary>
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="22" y1="2" x2="11" y2="13"></line><path d="M22 2 15 22l-4-9-9-4 20-7z"></path></svg>
+        <h2 style="display:inline">Verificación: envío al sistema padre (temporal)</h2>
+      </summary>
+      <p class="hint">Cada vez que termina un análisis, se manda un postMessage con <code>fase: 2</code> y el Excel adjunto en base64 al sistema que embebe esta página. Aquí se ve si ese envío se disparó correctamente (o por qué no, ej. si se está probando en modo standalone, fuera de un iframe).</p>
+      <div id="postmessage-envio-debug" style="font-family:monospace;font-size:11px;max-height:160px;overflow:auto;background:#fafafa;border:1px solid #eee;padding:6px;border-radius:5px;">Todavía no se ha enviado ningún resultado.</div>
     </details>
 
     <section class="panel step" id="panel-paso-1">
