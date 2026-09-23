@@ -92,6 +92,7 @@ const PostMessageBridge = (() => {
 
   let onDataReceived = null;
   let lastReceived = null;
+  let lastOrigin = null; // origen (ya validado contra ALLOWED_ORIGINS) del último mensaje recibido del padre; se usa para poder contestarle sin usar '*'
 
   function init(callback) {
     onDataReceived = callback;
@@ -126,6 +127,8 @@ const PostMessageBridge = (() => {
       );
       return;
     }
+
+    lastOrigin = event.origin;
 
     const raw = event.data;
     if (!raw || typeof raw !== 'object') {
@@ -171,6 +174,37 @@ const PostMessageBridge = (() => {
     }
   }
 
+  // Le manda datos de vuelta al sistema que nos embebe (ej. el aviso de
+  // que la Fase 2 terminó, con el Excel adjunto en base64). Por
+  // seguridad SIEMPRE se manda al origen exacto que ya validamos contra
+  // ALLOWED_ORIGINS al recibir el mensaje de init (INIT_FASE_2) — nunca
+  // con '*', para no exponer los datos/Excel del caso a quien sea que
+  // nos esté embebiendo si no es realmente el sistema SAM esperado.
+  //
+  // Si todavía no llegó ningún mensaje válido del padre (por ejemplo,
+  // se está usando el sistema en modo standalone, fuera de un iframe),
+  // no hay a quién mandarle nada y la función no hace nada, dejando
+  // constancia en el panel de diagnóstico.
+  function enviarASistemaPadre(payload) {
+    if (!lastOrigin) {
+      logDebug(
+        'No se pudo enviar postMessage al sistema padre: todavía no se ha validado ningún origen (no ha llegado un INIT_FASE_2). Esto es normal si el sistema se está usando en modo standalone.',
+        payload,
+        true
+      );
+      return false;
+    }
+
+    try {
+      window.parent.postMessage(payload, lastOrigin);
+      logDebug('postMessage enviado al sistema padre (' + lastOrigin + '):', payload);
+      return true;
+    } catch (e) {
+      logDebug('Error al enviar postMessage al sistema padre: ' + e.message, null, true);
+      return false;
+    }
+  }
+
   function logDebug(msg, data, isWarning = false) {
     console.log(
       isWarning ? '%c[postMessage] ' : '%c[postMessage]',
@@ -196,5 +230,5 @@ const PostMessageBridge = (() => {
     return lastReceived;
   }
 
-  return { init, getLastReceived };
+  return { init, getLastReceived, enviarASistemaPadre };
 })();

@@ -14,7 +14,8 @@ const state = {
   seccionesResult: null,
   capaAfectacion: 'manzana', // 'manzana' | 'seccion' — según el tipo de caso
   utInvolucradas: [], // [{claveUT, idSeccxut}] recibidas por postMessage, para Fusión
-  bloqueadoPorExterno: false // true si UT/tipo de caso vinieron por postMessage
+  bloqueadoPorExterno: false, // true si UT/tipo de caso vinieron por postMessage
+  ultimoResultado: null // snapshot del último análisis (N, método, modelo, params...), usado por la exportación a Excel y por el postMessage al sistema padre
 };
 
 let mapManager = null;
@@ -80,6 +81,7 @@ function resetDownstreamState() {
   state.localidadResult = null;
   state.seccionesResult = null;
   state.referenceLoaded = false;
+  state.ultimoResultado = null;
 
   document.getElementById('zona-afectada-info').classList.add('hidden');
   document.getElementById('panel-resultados').hidden = true;
@@ -551,7 +553,7 @@ function wireEvents() {
   });
 
   btnAnalizar.addEventListener('click', analizar);
-  btnExportar.addEventListener('click', exportarCSV);
+  btnExportar.addEventListener('click', exportarExcel);
 }
 
 async function analizar() {
@@ -671,12 +673,30 @@ async function analizar() {
       params
     });
 
+    // Snapshot del análisis completo: lo usan tanto la exportación a
+    // Excel (botón "Exportar resultados") como el postMessage que se
+    // manda al sistema padre al terminar el análisis.
+    state.ultimoResultado = {
+      N,
+      nAfectacion,
+      nLocalidades,
+      usaSecciones,
+      sample,
+      modelo,
+      params
+    };
+
     setStatus(
       huboRecalculo
         ? `Análisis completado. (% de afectación por ${usaSecciones ? 'sección' : 'manzana'} recalculado localmente con Turf.js — ver nota en Resultados.)`
         : 'Análisis completado.',
       'ok'
     );
+
+    // Le avisa al sistema que embebe esta página (SAM) que el análisis
+    // de la Fase 2 ya terminó, adjuntando el mismo Excel que se le
+    // ofrece descargar a la persona usuaria. Ver enviarResultadoAlPadre().
+    enviarResultadoAlPadre();
 
   } catch (e) {
     setStatus(
@@ -787,61 +807,161 @@ function renderResultados({
   });
 }
 
-function exportarCSV() {
-  if (!state.manzanasResult && !state.seccionesResult && !state.localidadResult) return;
+// ---------------- Exportación a Excel ----------------
 
-  const lines = [];
-  lines.push(
-    'tipo,identificador,seccion,ln,porcentaje_afectado,ln_ponderada'
-  );
+// Arma el libro de Excel (SheetJS) con todo lo obtenido y calculado:
+// una hoja "Resumen" con los datos generales del caso y del cálculo,
+// y una hoja por cada tabla de detalle que ya se muestra en pantalla
+// (Manzanas o Secciones, según el tipo de caso, y Localidades).
+// Se usa tanto para el botón "Exportar resultados (Excel)" como para
+// el postMessage que se le manda al sistema padre (enviarResultadoAlPadre).
+function construirLibroExcel() {
+  const r = state.ultimoResultado;
+  if (!r) return null;
 
-  (state.manzanasResult?.features || []).forEach((f) => {
-    const p = f.properties;
-    const ln = getLN(p);
-    const pct = p.porcentaje_afectado ?? 100;
+  const cve = state.selectedUT?.properties?.cve_ut || '';
+  const nombreUT = state.selectedUT?.properties?.nombre || '';
+  const tipoCasoId = document.getElementById('sel-tipo-caso').value;
+  const tipoCasoLabel =
+    ModeloEncuesta.TIPOS_CASO.find((t) => t.id === tipoCasoId)?.label || tipoCasoId;
+  const folio = PostMessageBridge.getLastReceived()?.caseId ?? '';
+  const metodoLabel = r.sample.method === 'censo' ? 'CENSO (100%)' : 'MUESTREO';
 
-    lines.push(
-      `manzana,${p.manzana ?? ''},${p.seccion ?? ''},${ln},${pct},${(ln * pct / 100).toFixed(2)}`
-    );
-  });
+  const wb = XLSX.utils.book_new();
 
-  (state.seccionesResult?.features || []).forEach((f) => {
-    const p = f.properties;
-    const ln = getLN(p);
-    const pct = p.porcentaje_afectado ?? 100;
+  const filasResumen = [
+    ['Sistema', 'Cálculo de Encuestas — Modificación de Límites Territoriales (MGPC)'],
+    ['Fecha de análisis', new Date().toLocaleString('es-MX')],
+    ['Folio/Caso', folio],
+    ['Unidad Territorial (UT)', cve],
+    ['Nombre de la UT', nombreUT],
+    ['Tipo de caso', tipoCasoLabel],
+    [],
+    [(r.usaSecciones ? 'Secciones' : 'Manzanas') + ' (ponderada por % de área)', Number(r.nAfectacion.toFixed(1))],
+    ['Localidades', Number(r.nLocalidades.toFixed(1))],
+    ['Población afectada total (N)', Number(r.N.toFixed(1))],
+    ['Método aplicado', metodoLabel],
+    ['Encuestas requeridas', r.sample.n],
+    ['Modelo de encuesta', r.modelo.label],
+    ['Nota del modelo', r.modelo.nota],
+    [],
+    ['Parámetros de muestreo', ''],
+    ['Z', r.params.Z],
+    ['p', r.params.p],
+    ['q', r.params.q],
+    ['d', r.params.d],
+    ['Umbral de censo (N)', r.params.censusThreshold]
+  ];
+  const hojaResumen = XLSX.utils.aoa_to_sheet(filasResumen);
+  hojaResumen['!cols'] = [{ wch: 34 }, { wch: 46 }];
+  XLSX.utils.book_append_sheet(wb, hojaResumen, 'Resumen');
 
-    lines.push(
-      `seccion,${p.seccion ?? ''},${p.seccion ?? ''},${ln},${pct},${(ln * pct / 100).toFixed(2)}`
-    );
-  });
+  if (!r.usaSecciones && state.manzanasResult?.features?.length) {
+    const filas = [['Manzana', 'Sección', 'LN', '% afectado', 'LN ponderada']];
+    state.manzanasResult.features.forEach((f) => {
+      const p = f.properties;
+      const ln = getLN(p);
+      const pct = p.porcentaje_afectado ?? 100;
+      filas.push([p.manzana ?? '', p.seccion ?? '', ln, pct, Number((ln * pct / 100).toFixed(2))]);
+    });
+    const hoja = XLSX.utils.aoa_to_sheet(filas);
+    hoja['!cols'] = [{ wch: 12 }, { wch: 10 }, { wch: 10 }, { wch: 12 }, { wch: 14 }];
+    XLSX.utils.book_append_sheet(wb, hoja, 'Manzanas afectadas');
+  }
 
-  (state.localidadResult?.features || []).forEach((f) => {
-    const p = f.properties;
-    const ln = getLN(p);
+  if (r.usaSecciones && state.seccionesResult?.features?.length) {
+    const filas = [['Sección', 'LN', '% afectado', 'LN ponderada']];
+    state.seccionesResult.features.forEach((f) => {
+      const p = f.properties;
+      const ln = getLN(p);
+      const pct = p.porcentaje_afectado ?? 100;
+      filas.push([p.seccion ?? '', ln, pct, Number((ln * pct / 100).toFixed(2))]);
+    });
+    const hoja = XLSX.utils.aoa_to_sheet(filas);
+    hoja['!cols'] = [{ wch: 10 }, { wch: 10 }, { wch: 12 }, { wch: 14 }];
+    XLSX.utils.book_append_sheet(wb, hoja, 'Secciones afectadas');
+  }
 
-    lines.push(
-      `localidad,${p.localidad ?? ''},${p.seccion ?? ''},${ln},100,${ln}`
-    );
-  });
+  if (state.localidadResult?.features?.length) {
+    const filas = [['Localidad', 'Sección', 'LN']];
+    state.localidadResult.features.forEach((f) => {
+      const p = f.properties;
+      filas.push([p.localidad ?? '', p.seccion ?? '', getLN(p)]);
+    });
+    const hoja = XLSX.utils.aoa_to_sheet(filas);
+    hoja['!cols'] = [{ wch: 24 }, { wch: 10 }, { wch: 10 }];
+    XLSX.utils.book_append_sheet(wb, hoja, 'Localidades afectadas');
+  }
 
-  const blob = new Blob(
-    [lines.join('\n')],
-    { type: 'text/csv;charset=utf-8;' }
-  );
+  return wb;
+}
 
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  const cve =
-    state.selectedUT?.properties?.cve_ut || 'ut';
+function nombreArchivoExcel() {
+  const cve = state.selectedUT?.properties?.cve_ut || 'ut';
+  return `desglose_afectacion_${cve}.xlsx`;
+}
 
-  a.href = url;
-  a.download = `desglose_afectacion_${cve}.csv`;
-  a.click();
-
-  URL.revokeObjectURL(url);
+function exportarExcel() {
+  const wb = construirLibroExcel();
+  if (!wb) return;
+  XLSX.writeFile(wb, nombreArchivoExcel());
 }
 
 // ---------------- Integración vía postMessage ----------------
+
+// Al terminar el análisis, le avisa al sistema que embebe esta página
+// (SAM) que la Fase 2 concluyó, y le adjunta —en base64, dentro del
+// mismo JSON— el Excel que se le ofrece descargar a la persona usuaria
+// desde el botón "Exportar resultados (Excel)", para que el sistema
+// padre pueda guardarlo/adjuntarlo al expediente sin que la persona
+// tenga que descargarlo y volver a subirlo a mano.
+//
+// NOTA para el equipo del sistema que embebe esta página: falta que
+// ESE sistema implemente el manejador que reciba este postMessage
+// (window.addEventListener('message', ...)), valide el origen, y
+// decodifique/guarde el Excel adjunto. Aquí solo se envía.
+function enviarResultadoAlPadre() {
+  const wb = construirLibroExcel();
+  if (!wb) return;
+
+  let excelBase64;
+  try {
+    excelBase64 = XLSX.write(wb, { bookType: 'xlsx', type: 'base64' });
+  } catch (e) {
+    console.error('No se pudo generar el Excel para el postMessage al padre:', e);
+    return;
+  }
+
+  const r = state.ultimoResultado;
+  const cve = state.selectedUT?.properties?.cve_ut || '';
+  const tipoCasoId = document.getElementById('sel-tipo-caso').value;
+  const folio = PostMessageBridge.getLastReceived()?.caseId ?? null;
+
+  const payload = {
+    fase: 2,
+    tipo: 'MGPC_FASE_2_COMPLETADA',
+    folio,
+    claveUT: cve,
+    tipoCaso: tipoCasoId,
+    resultado: {
+      N: r.N,
+      nAfectacion: r.nAfectacion,
+      nLocalidades: r.nLocalidades,
+      usaSecciones: r.usaSecciones,
+      metodo: r.sample.method,
+      encuestasRequeridas: r.sample.n,
+      modelo: r.modelo.label
+    },
+    excel: {
+      filename: nombreArchivoExcel(),
+      mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      base64: excelBase64
+    }
+  };
+
+  PostMessageBridge.enviarASistemaPadre(payload);
+}
+
 
 // Se llama cuando PostMessageBridge recibe datos válidos del sistema
 // externo (ver js/postmessage.js). Simula lo que haría la persona a
