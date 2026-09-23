@@ -696,7 +696,7 @@ async function analizar() {
     // Le avisa al sistema que embebe esta página (SAM) que el análisis
     // de la Fase 2 ya terminó, adjuntando el mismo Excel que se le
     // ofrece descargar a la persona usuaria. Ver enviarResultadoAlPadre().
-    enviarResultadoAlPadre();
+    await enviarResultadoAlPadre();
 
   } catch (e) {
     setStatus(
@@ -809,13 +809,43 @@ function renderResultados({
 
 // ---------------- Exportación a Excel ----------------
 
-// Arma el libro de Excel (SheetJS) con todo lo obtenido y calculado:
-// una hoja "Resumen" con los datos generales del caso y del cálculo,
-// y una hoja por cada tabla de detalle que ya se muestra en pantalla
-// (Manzanas o Secciones, según el tipo de caso, y Localidades).
+const COLOR_MORADO = 'FF4B2E83';
+const COLOR_MORADO_CLARO = 'FFEFEAF7';
+const COLOR_BLANCO = 'FFFFFFFF';
+const BORDE_GRIS = { style: 'thin', color: { argb: 'FFDDD6EA' } };
+
+// Le pone estilo de "encabezado" (fondo morado, texto blanco y negrita,
+// centrado, con borde) a una fila completa. Se usa en los encabezados
+// de columnas de las hojas de detalle y en los títulos de sección de
+// la hoja Resumen.
+function estilizarEncabezado(row) {
+  row.eachCell({ includeEmpty: true }, (cell) => {
+    cell.font = { bold: true, color: { argb: COLOR_BLANCO } };
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: COLOR_MORADO } };
+    cell.alignment = { vertical: 'middle', horizontal: 'center' };
+    cell.border = { top: BORDE_GRIS, bottom: BORDE_GRIS, left: BORDE_GRIS, right: BORDE_GRIS };
+  });
+  row.height = 20;
+}
+
+// Le pone borde gris claro a todas las celdas de una fila (para las
+// filas de datos, sin el fondo morado del encabezado).
+function bordearFila(row) {
+  row.eachCell({ includeEmpty: true }, (cell) => {
+    cell.border = { top: BORDE_GRIS, bottom: BORDE_GRIS, left: BORDE_GRIS, right: BORDE_GRIS };
+  });
+}
+
+// Arma el libro de Excel (ExcelJS, con estilos reales: colores,
+// negritas, bordes) con todo lo obtenido y calculado: una hoja
+// "Resumen" con los datos generales del caso y del cálculo, y una hoja
+// por cada tabla de detalle que ya se muestra en pantalla (Manzanas o
+// Secciones, según el tipo de caso, y Localidades).
 // Se usa tanto para el botón "Exportar resultados (Excel)" como para
 // el postMessage que se le manda al sistema padre (enviarResultadoAlPadre).
-function construirLibroExcel() {
+// Devuelve una Promise<ExcelJS.Workbook> (o Promise<null> si no hay
+// resultado calculado todavía).
+async function construirLibroExcel() {
   const r = state.ultimoResultado;
   if (!r) return null;
 
@@ -827,70 +857,107 @@ function construirLibroExcel() {
   const folio = PostMessageBridge.getLastReceived()?.caseId ?? '';
   const metodoLabel = r.sample.method === 'censo' ? 'CENSO (100%)' : 'MUESTREO';
 
-  const wb = XLSX.utils.book_new();
+  const wb = new ExcelJS.Workbook();
+  wb.creator = 'Sistema de Cálculo de Encuestas — MGPC';
+  wb.created = new Date();
 
-  const filasResumen = [
-    ['Sistema', 'Cálculo de Encuestas — Modificación de Límites Territoriales (MGPC)'],
+  // --- Hoja: Resumen ---
+  const hojaResumen = wb.addWorksheet('Resumen');
+  hojaResumen.columns = [{ width: 32 }, { width: 46 }];
+
+  const filaTitulo = hojaResumen.addRow(['Cálculo de Encuestas — Modificación de Límites Territoriales (MGPC)']);
+  hojaResumen.mergeCells('A1:B1');
+  filaTitulo.font = { bold: true, size: 13, color: { argb: COLOR_BLANCO } };
+  filaTitulo.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: COLOR_MORADO } };
+  filaTitulo.getCell(1).alignment = { vertical: 'middle', horizontal: 'center' };
+  filaTitulo.height = 26;
+
+  const filasDatosGenerales = [
     ['Fecha de análisis', new Date().toLocaleString('es-MX')],
     ['Folio/Caso', folio],
     ['Unidad Territorial (UT)', cve],
     ['Nombre de la UT', nombreUT],
-    ['Tipo de caso', tipoCasoLabel],
-    [],
+    ['Tipo de caso', tipoCasoLabel]
+  ];
+  filasDatosGenerales.forEach(([k, v]) => {
+    const row = hojaResumen.addRow([k, v]);
+    row.getCell(1).font = { bold: true };
+    bordearFila(row);
+  });
+
+  hojaResumen.addRow([]);
+  estilizarEncabezado(hojaResumen.addRow(['Resultado del cálculo', '']));
+
+  const filasResultado = [
     [(r.usaSecciones ? 'Secciones' : 'Manzanas') + ' (ponderada por % de área)', Number(r.nAfectacion.toFixed(1))],
     ['Localidades', Number(r.nLocalidades.toFixed(1))],
     ['Población afectada total (N)', Number(r.N.toFixed(1))],
     ['Método aplicado', metodoLabel],
-    ['Encuestas requeridas', r.sample.n],
-    ['Modelo de encuesta', r.modelo.label],
-    ['Nota del modelo', r.modelo.nota],
-    [],
-    ['Parámetros de muestreo', ''],
+    ['Encuestas requeridas', r.sample.n]
+  ];
+  filasResultado.forEach(([k, v]) => {
+    const row = hojaResumen.addRow([k, v]);
+    row.getCell(1).font = { bold: true };
+    row.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: COLOR_MORADO_CLARO } };
+    row.getCell(2).font = { bold: true };
+    bordearFila(row);
+  });
+
+  hojaResumen.addRow([]);
+  estilizarEncabezado(hojaResumen.addRow(['Parámetros de muestreo', '']));
+
+  const filasParametros = [
     ['Z', r.params.Z],
     ['p', r.params.p],
     ['q', r.params.q],
     ['d', r.params.d],
     ['Umbral de censo (N)', r.params.censusThreshold]
   ];
-  const hojaResumen = XLSX.utils.aoa_to_sheet(filasResumen);
-  hojaResumen['!cols'] = [{ wch: 34 }, { wch: 46 }];
-  XLSX.utils.book_append_sheet(wb, hojaResumen, 'Resumen');
+  filasParametros.forEach(([k, v]) => {
+    const row = hojaResumen.addRow([k, v]);
+    row.getCell(1).font = { bold: true };
+    bordearFila(row);
+  });
 
+  hojaResumen.views = [{ state: 'frozen', ySplit: 1 }];
+
+  // --- Hoja: Manzanas o Secciones (según el tipo de caso) ---
   if (!r.usaSecciones && state.manzanasResult?.features?.length) {
-    const filas = [['Manzana', 'Sección', 'LN', '% afectado', 'LN ponderada']];
+    const hoja = wb.addWorksheet('Manzanas afectadas');
+    hoja.columns = [{ width: 12 }, { width: 10 }, { width: 10 }, { width: 12 }, { width: 14 }];
+    estilizarEncabezado(hoja.addRow(['Manzana', 'Sección', 'LN', '% afectado', 'LN ponderada']));
     state.manzanasResult.features.forEach((f) => {
       const p = f.properties;
       const ln = getLN(p);
       const pct = p.porcentaje_afectado ?? 100;
-      filas.push([p.manzana ?? '', p.seccion ?? '', ln, pct, Number((ln * pct / 100).toFixed(2))]);
+      bordearFila(hoja.addRow([p.manzana ?? '', p.seccion ?? '', ln, pct, Number((ln * pct / 100).toFixed(2))]));
     });
-    const hoja = XLSX.utils.aoa_to_sheet(filas);
-    hoja['!cols'] = [{ wch: 12 }, { wch: 10 }, { wch: 10 }, { wch: 12 }, { wch: 14 }];
-    XLSX.utils.book_append_sheet(wb, hoja, 'Manzanas afectadas');
+    hoja.views = [{ state: 'frozen', ySplit: 1 }];
   }
 
   if (r.usaSecciones && state.seccionesResult?.features?.length) {
-    const filas = [['Sección', 'LN', '% afectado', 'LN ponderada']];
+    const hoja = wb.addWorksheet('Secciones afectadas');
+    hoja.columns = [{ width: 10 }, { width: 10 }, { width: 12 }, { width: 14 }];
+    estilizarEncabezado(hoja.addRow(['Sección', 'LN', '% afectado', 'LN ponderada']));
     state.seccionesResult.features.forEach((f) => {
       const p = f.properties;
       const ln = getLN(p);
       const pct = p.porcentaje_afectado ?? 100;
-      filas.push([p.seccion ?? '', ln, pct, Number((ln * pct / 100).toFixed(2))]);
+      bordearFila(hoja.addRow([p.seccion ?? '', ln, pct, Number((ln * pct / 100).toFixed(2))]));
     });
-    const hoja = XLSX.utils.aoa_to_sheet(filas);
-    hoja['!cols'] = [{ wch: 10 }, { wch: 10 }, { wch: 12 }, { wch: 14 }];
-    XLSX.utils.book_append_sheet(wb, hoja, 'Secciones afectadas');
+    hoja.views = [{ state: 'frozen', ySplit: 1 }];
   }
 
+  // --- Hoja: Localidades ---
   if (state.localidadResult?.features?.length) {
-    const filas = [['Localidad', 'Sección', 'LN']];
+    const hoja = wb.addWorksheet('Localidades afectadas');
+    hoja.columns = [{ width: 24 }, { width: 10 }, { width: 10 }];
+    estilizarEncabezado(hoja.addRow(['Localidad', 'Sección', 'LN']));
     state.localidadResult.features.forEach((f) => {
       const p = f.properties;
-      filas.push([p.localidad ?? '', p.seccion ?? '', getLN(p)]);
+      bordearFila(hoja.addRow([p.localidad ?? '', p.seccion ?? '', getLN(p)]));
     });
-    const hoja = XLSX.utils.aoa_to_sheet(filas);
-    hoja['!cols'] = [{ wch: 24 }, { wch: 10 }, { wch: 10 }];
-    XLSX.utils.book_append_sheet(wb, hoja, 'Localidades afectadas');
+    hoja.views = [{ state: 'frozen', ySplit: 1 }];
   }
 
   return wb;
@@ -901,10 +968,28 @@ function nombreArchivoExcel() {
   return `desglose_afectacion_${cve}.xlsx`;
 }
 
-function exportarExcel() {
-  const wb = construirLibroExcel();
+async function exportarExcel() {
+  const wb = await construirLibroExcel();
   if (!wb) return;
-  XLSX.writeFile(wb, nombreArchivoExcel());
+  const buffer = await wb.xlsx.writeBuffer();
+  const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = nombreArchivoExcel();
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// Convierte un ArrayBuffer a base64 sin depender de Buffer (no existe
+// en el navegador) ni de FileReader (evita la vuelta async extra).
+function arrayBufferABase64(buffer) {
+  let binario = '';
+  const bytes = new Uint8Array(buffer);
+  for (let i = 0; i < bytes.length; i++) {
+    binario += String.fromCharCode(bytes[i]);
+  }
+  return window.btoa(binario);
 }
 
 // ---------------- Integración vía postMessage ----------------
@@ -920,13 +1005,14 @@ function exportarExcel() {
 // ESE sistema implemente el manejador que reciba este postMessage
 // (window.addEventListener('message', ...)), valide el origen, y
 // decodifique/guarde el Excel adjunto. Aquí solo se envía.
-function enviarResultadoAlPadre() {
-  const wb = construirLibroExcel();
+async function enviarResultadoAlPadre() {
+  const wb = await construirLibroExcel();
   if (!wb) return;
 
   let excelBase64;
   try {
-    excelBase64 = XLSX.write(wb, { bookType: 'xlsx', type: 'base64' });
+    const buffer = await wb.xlsx.writeBuffer();
+    excelBase64 = arrayBufferABase64(buffer);
   } catch (e) {
     console.error('No se pudo generar el Excel para el postMessage al padre:', e);
     return;
@@ -959,7 +1045,61 @@ function enviarResultadoAlPadre() {
     }
   };
 
-  PostMessageBridge.enviarASistemaPadre(payload);
+  const enviado = PostMessageBridge.enviarASistemaPadre(payload);
+
+  // Se guarda también localmente (aparte del panel de diagnóstico de
+  // postmessage.js) para poder mostrarlo en el apartado temporal de
+  // verificación de envío (ver renderEnvioDebug en index.html/app.js).
+  registrarEnvioDebug(payload, enviado);
+}
+
+// APARTADO TEMPORAL de verificación — pinta en el panel
+// #postmessage-envio-debug si el postMessage de Fase 2 (con el Excel
+// adjunto) se logró enviar o no, y con qué datos, para comprobar la
+// integración mientras el sistema padre no tenga todavía su propio
+// listener. Se puede quitar junto con el panel HTML cuando ya no haga
+// falta.
+function registrarEnvioDebug(payload, enviado) {
+  const el = document.getElementById('postmessage-envio-debug');
+  if (!el) return;
+
+  const resumenPayload = {
+    fase: payload.fase,
+    tipo: payload.tipo,
+    folio: payload.folio,
+    claveUT: payload.claveUT,
+    tipoCaso: payload.tipoCaso,
+    resultado: payload.resultado,
+    excel: {
+      filename: payload.excel.filename,
+      mimeType: payload.excel.mimeType,
+      base64: `(${payload.excel.base64.length} caracteres — omitido aquí por espacio)`
+    }
+  };
+
+  const linea = document.createElement('div');
+  linea.style.borderBottom = '1px solid #eee';
+  linea.style.padding = '4px 0';
+  linea.style.color = enviado ? 'var(--green)' : 'var(--red)';
+
+  const encabezado = document.createElement('div');
+  encabezado.style.fontWeight = '700';
+  encabezado.textContent = enviado
+    ? `[${new Date().toLocaleTimeString('es-MX')}] Enviado correctamente al sistema padre.`
+    : `[${new Date().toLocaleTimeString('es-MX')}] NO se pudo enviar (¿modo standalone, sin iframe padre?).`;
+  linea.appendChild(encabezado);
+
+  const cuerpo = document.createElement('pre');
+  cuerpo.style.whiteSpace = 'pre-wrap';
+  cuerpo.style.margin = '4px 0 0';
+  cuerpo.style.color = 'var(--text)';
+  cuerpo.textContent = JSON.stringify(resumenPayload, null, 2);
+  linea.appendChild(cuerpo);
+
+  if (el.textContent.trim() === 'Todavía no se ha enviado ningún resultado.') {
+    el.textContent = '';
+  }
+  el.prepend(linea);
 }
 
 
