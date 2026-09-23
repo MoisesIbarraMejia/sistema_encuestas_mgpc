@@ -149,6 +149,22 @@ body.is-embedded .app-header { display: none; }
 
 .hint { font-size: var(--text-xs); color: var(--text-muted); margin: var(--sp-1) 0 var(--sp-2); line-height: 1.45; }
 
+/* --- Iconografía SVG ---
+   Se usan SVG en línea (stroke: currentColor) en vez de emojis: se ven
+   igual en cualquier sistema operativo/navegador, heredan el color del
+   texto que los rodea y se pueden alinear con precisión junto al
+   texto. */
+.icon {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  vertical-align: -2px;
+}
+h2 .icon, summary .icon { width: 15px; height: 15px; }
+.btn .icon { width: 15px; height: 15px; }
+.btn-large .icon { width: 17px; height: 17px; }
+.hint .icon { margin-right: 3px; }
+
 label { font-size: var(--text-sm); color: var(--text); font-weight: 600; display: block; margin-bottom: var(--sp-1); }
 
 input[type="text"], input[list], input[type="number"], select {
@@ -380,7 +396,13 @@ body.is-embedded .app-footer { padding: 4px 14px; }
   font-size: var(--text-xs);
   color: var(--text-muted);
   font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  cursor: pointer;
+  list-style: none;
 }
+#postmessage-debug-panel summary::-webkit-details-marker { display: none; }
 #postmessage-debug-panel h2 { font-size: var(--text-xs); color: var(--text-muted); }
 
 /* --- Responsivo: cuando el iframe embebido es angosto, el sidebar
