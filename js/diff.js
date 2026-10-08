@@ -9,10 +9,44 @@ const Diff = (() => {
 
   function toFeature(geojson) {
     if (!geojson) return null;
-    if (geojson.type === 'Feature') return geojson;
-    if (geojson.type === 'FeatureCollection') return geojson.features[0] || null;
-    // Es una geometría "pelona"
-    return turf.feature(geojson);
+    if (geojson.type === 'FeatureCollection') {
+      if (!Array.isArray(geojson.features) || geojson.features.length === 0) return null;
+      // Todas las partes cuentan: omitir las posteriores a la primera
+      // subestimaba el área de las UT compuestas por varias geometrías.
+      return geojson.features.map(toFeature).reduce((merged, feature) => {
+        if (!feature) throw new Error('La colección contiene una geometría vacía.');
+        if (!merged) return feature;
+        const combined = turf.union(merged, feature);
+        if (!combined) throw new Error('No se pudieron unir todas las partes del polígono.');
+        return combined;
+      }, null);
+    }
+    const feature = geojson.type === 'Feature' ? geojson : turf.feature(geojson);
+    if (!feature.geometry || !['Polygon', 'MultiPolygon'].includes(feature.geometry.type)) {
+      throw new Error('Se requiere una geometría Polygon o MultiPolygon.');
+    }
+    const polygons = feature.geometry.type === 'Polygon'
+      ? [feature.geometry.coordinates] : feature.geometry.coordinates;
+    if (!Array.isArray(polygons) || polygons.length === 0) {
+      throw new Error('El polígono no contiene coordenadas.');
+    }
+    polygons.forEach((rings) => {
+      if (!Array.isArray(rings) || rings.length === 0) throw new Error('El polígono no contiene anillos.');
+      rings.forEach((ring) => {
+        if (!Array.isArray(ring) || ring.length < 4 || ring.some((point) =>
+          !Array.isArray(point) || point.length < 2 ||
+          !Number.isFinite(point[0]) || !Number.isFinite(point[1])
+        )) throw new Error('El polígono contiene coordenadas inválidas.');
+        const first = ring[0];
+        const last = ring[ring.length - 1];
+        if (first[0] !== last[0] || first[1] !== last[1]) {
+          throw new Error('Todos los anillos del polígono deben estar cerrados.');
+        }
+      });
+    });
+    // Misma precisión de cálculo que el editor: estabiliza límites contiguos
+    // sin mutar las geometrías originales ni descartar partes del resultado.
+    return turf.truncate(feature, {precision:10, mutate:false});
   }
 
   // Devuelve { affected, added, removed } — cada uno Feature|null
@@ -24,37 +58,32 @@ const Diff = (() => {
       throw new Error('Se requieren ambos polígonos (original y modificado) para calcular la diferencia');
     }
 
-    let removed = null; // lo que estaba en el original y ya no está (se quita de la UT)
-    let added = null;   // lo que está en el modificado y no estaba antes (se agrega a la UT)
-
-    try { removed = turf.difference(original, modified); } catch (e) { removed = null; }
-    try { added = turf.difference(modified, original); } catch (e) { added = null; }
-
-    let affected = null;
-    if (added && removed) {
-      try { affected = turf.union(added, removed); } catch (e) { affected = added || removed; }
-    } else {
-      affected = added || removed || null;
+    try {
+      const removed = turf.difference(original, modified);
+      const added = turf.difference(modified, original);
+      const affected = added && removed ? turf.union(added, removed) : added || removed || null;
+      if (added && removed && !affected) throw new Error('La unión de las diferencias está vacía.');
+      return { affected, added, removed };
+    } catch (error) {
+      // Un fallo no equivale a una diferencia vacía; abortar evita calcular
+      // encuestas usando únicamente una parte de la población afectada.
+      throw new Error('No se pudo calcular la zona afectada completa. Revisa los polígonos: ' + error.message);
     }
-
-    return { affected, added, removed };
   }
 
   // true si el polígono editado es idéntico (o casi) al original
   function isUnchanged(originalGeoJSON, modifiedGeoJSON) {
     const original = toFeature(originalGeoJSON);
     const modified = toFeature(modifiedGeoJSON);
-    if (!original || !modified) return true;
-    try {
-      const areaOriginal = turf.area(original);
-      const { affected } = computeAffectedGeometry(original, modified);
-      if (!affected) return true;
-      const areaAfectada = turf.area(affected);
-      // Cambios menores a 1 m² se consideran ruido de edición, no un cambio real
-      return areaAfectada < 1 || areaAfectada / areaOriginal < 0.00001;
-    } catch (e) {
-      return false;
-    }
+    if (!original || !modified) throw new Error('Se requieren ambos polígonos para comparar los cambios.');
+    const areaOriginal = turf.area(original);
+    if (!Number.isFinite(areaOriginal) || areaOriginal <= 0) throw new Error('El polígono original no tiene un área válida.');
+    const { affected } = computeAffectedGeometry(original, modified);
+    if (!affected) return true;
+    const areaAfectada = turf.area(affected);
+    if (!Number.isFinite(areaAfectada)) throw new Error('El área afectada no es válida.');
+    // Cambios menores a 1 m² se consideran ruido de edición, no un cambio real.
+    return areaAfectada < 1 || areaAfectada / areaOriginal < 0.00001;
   }
 
   // % del área de "feature" que cae dentro de "referencia" (0-100).

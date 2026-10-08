@@ -21,6 +21,23 @@
 // ============================================================
 const Sampling = (() => {
 
+  function validateParams(params) {
+    if (!params || !Number.isFinite(params.Z) || params.Z <= 0) {
+      throw new Error('Z debe ser un número mayor que cero.');
+    }
+    if (![params.p, params.q].every((n) => Number.isFinite(n) && n > 0 && n < 1) ||
+        Math.abs(params.p + params.q - 1) > 1e-9) {
+      throw new Error('p y q deben estar entre 0 y 1 y sumar 1.');
+    }
+    if (!Number.isFinite(params.d) || params.d <= 0 || params.d >= 1) {
+      throw new Error('El margen de error d debe ser mayor que 0 y menor que 1.');
+    }
+    if (!Number.isSafeInteger(params.censusThreshold) || params.censusThreshold < 0) {
+      throw new Error('El umbral de censo debe ser un entero mayor o igual a cero.');
+    }
+    return params;
+  }
+
   // n = (N·Z²·p·q) / (d²·(N-1) + Z²·p·q)
   function cochran(N, { Z, p, q, d } = CONFIG.SAMPLING) {
     if (N <= 0) return 0;
@@ -29,6 +46,10 @@ const Sampling = (() => {
 
   // Aplica la regla de censo mínimo: si N <= umbral, se censa al 100%.
   function computeSampleSize(N, params = CONFIG.SAMPLING) {
+    validateParams(params);
+    if (!Number.isFinite(N) || N < 0) {
+      throw new Error('La población debe ser un número finito mayor o igual a cero.');
+    }
     N = Math.round(N);
     if (N <= 0) {
       return { N, n: 0, method: 'sin_poblacion' };
@@ -37,8 +58,9 @@ const Sampling = (() => {
       return { N, n: N, method: 'censo' };
     }
     const raw = cochran(N, params);
-    return { N, n: Math.round(raw), method: 'muestreo' };
+    if (!Number.isFinite(raw)) throw new Error('No se pudo calcular una muestra válida con los parámetros indicados.');
+    return { N, n: Math.min(N, Math.max(0, Math.round(raw))), method: 'muestreo' };
   }
 
-  return { cochran, computeSampleSize };
+  return { cochran, computeSampleSize, validateParams };
 })();

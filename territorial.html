@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Revisa y confirma · MGPC</title>
+  <link rel="stylesheet" href="css/shared.css?v=20261007-labels-1">
+  <link rel="stylesheet" href="css/territorial-shared.css?v=20261007-labels-1">
+  <link rel="stylesheet" href="css/territorial.css?v=20261007-labels-1">
+  <script src="https://unpkg.com/@turf/turf@6.5.0/turf.min.js"></script>
+</head>
+<body class="territorial-page">
+<a class="skip-link" href="#ut-action-screen">Ir al contenido</a>
+<main id="ut-action-screen" aria-labelledby="review-title">
+  <div class="ut-action-card review-shell">
+    <p class="section-label">Paso 3 de 3</p>
+    <h1 class="ut-action-title" id="review-title">Revisa y confirma tu propuesta</h1>
+    <p class="stage-description">Compara los límites y comprueba cuántas encuestas corresponden a esta propuesta antes de confirmarla.</p>
+    <div class="ut-action-sub">Distrito Local <span id="action-distrito-label">—</span> · UT <strong id="action-ut-label">—</strong> · <span id="action-ut-name">—</span></div>
+    <div id="review-error" class="workflow-error" role="alert"></div>
+    <div class="review-layout">
+      <section class="review-map-panel" aria-label="Comparación de límites">
+        <div class="review-legend">
+          <label><input type="checkbox" id="review-show-original" checked> <span class="review-swatch original"></span> Límite original</label>
+          <label id="review-proposed-legend"><input type="checkbox" id="review-show-proposed" checked> <span class="review-swatch proposed"></span> Propuesta</label>
+        </div>
+        <div id="map-error" class="workflow-error" role="alert" hidden></div>
+        <div id="review-map" role="region" aria-label="Mapa de los límites originales y la propuesta"></div>
+        <p class="metadata-note" id="review-map-note">Activa o desactiva cada límite para compararlos.</p>
+      </section>
+      <section class="review-summary-panel" aria-labelledby="review-case">
+        <p class="section-label">Resumen de tu caso</p>
+        <h2 id="review-case">—</h2>
+        <p id="review-scope"></p>
+        <div id="review-changes"></div>
+        <div class="review-stat-grid">
+          <div><strong id="review-population">—</strong><span>Personas consideradas (N)</span></div>
+          <div><strong id="review-sample">—</strong><span>Encuestas necesarias (n)</span></div>
+        </div>
+        <p class="metadata-note">La población se estima según el área afectada y se redondea a personas completas para calcular la muestra.</p>
+        <p><strong>Método:</strong> <span id="review-method">—</span></p>
+        <p class="metadata-note" id="review-sample-note"></p>
+        <p class="metadata-note" id="review-analysis-date"></p>
+      </section>
+    </div>
+    <label class="review-confirmation"><input type="checkbox" id="review-confirm"> <span>Revisé los límites y el alcance de la muestra.</span></label>
+    <div class="review-actions">
+      <button class="btn btn-primary" id="btn-save-review" type="button" disabled>Guardar propuesta revisada</button>
+      <button class="btn btn-secondary" id="btn-correct-review" type="button">Corregir propuesta</button>
+      <button class="btn btn-ghost" id="btn-review-survey" type="button">Volver a la muestra</button>
+      <button class="btn btn-ghost" id="btn-export-review" type="button">Exportar resumen</button>
+    </div>
+    <p id="review-status" class="review-outcome" role="status" aria-live="polite"></p>
+    <p class="metadata-note">Confirmar tu propuesta no equivale a su aprobación oficial.</p>
+    <button class="ut-action-back" id="btn-action-back" type="button">Iniciar otro caso</button>
+  </div>
+</main>
+
+<script src="js/config.js?v=20261007-labels-1"></script>
+<script src="js/workflow.js?v=20261007-labels-1"></script>
+<script src="js/territorial.js?v=20261007-population-display-1"></script>
+<script src="js/maps-loader.js?v=20261007-labels-1"></script>
+</body>
+</html>

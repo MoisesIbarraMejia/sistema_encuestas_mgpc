@@ -3,79 +3,25 @@
 // Google Maps + edición de polígonos
 // ============================================================
 
-// ============================================================
-// MapLabelOverlay — etiqueta de texto (HTML) anclada a un punto del
-// mapa. Google Maps no trae un "tooltip" nativo multilínea, así que
-// se implementa como un OverlayView estándar (patrón oficial de la
-// API v3): se posiciona sola en cada draw() usando la proyección del
-// mapa, y no intercepta clics (pointer-events: none en el CSS) para
-// no tapar el polígono que tiene debajo.
-//
-// La clase se define de forma PEREZOSA (ensureMapLabelOverlayClass)
-// en vez de con "class MapLabelOverlay extends google.maps.OverlayView"
-// a nivel de archivo: ese "extends" se evalúa en cuanto el script se
-// carga, y como el script de Google Maps se carga async con
-// callback=initMap, en ese momento "google" todavía no existe —
-// tronaba con "google is not defined" y dejaba sin definir todo lo
-// que venía después en el archivo (incluida la clase MapManager).
-// Aquí se define hasta que MapManager se construye (dentro de
-// initMap(), cuando "google" ya existe seguro).
-// ============================================================
-let MapLabelOverlay = null;
-
-function ensureMapLabelOverlayClass() {
-  if (MapLabelOverlay) return;
-
-  MapLabelOverlay = class extends google.maps.OverlayView {
-    // pane: en qué "pane" de Google Maps se inserta el div de la
-    // etiqueta. Google Maps apila sus panes en un orden fijo:
-    // mapPane < overlayLayer (ahí van los polígonos) < overlayShadow <
-    // overlayMouseTarget < floatPane (el más alto, usado para
-    // InfoWindows/marcadores arrastrables). Una etiqueta en
-    // 'overlayLayer' puede quedar debajo de un polígono dibujado
-    // después; en 'floatPane' siempre queda por encima de todos los
-    // polígonos, sin importar el orden en que se dibujen.
-    constructor(position, html, map, className = '', pane = 'overlayLayer') {
-      super();
-      this.position = position;
-      this.html = html;
-      this.className = className;
-      this.pane = pane;
-      this.div = null;
-      this.setMap(map);
-    }
-
-    onAdd() {
-      this.div = document.createElement('div');
-      this.div.className = `map-feature-label ${this.className}`.trim();
-      this.div.innerHTML = this.html;
-      this.getPanes()[this.pane].appendChild(this.div);
-    }
-
-    draw() {
-      if (!this.div) return;
-      const projection = this.getProjection();
-      if (!projection) return;
-
-      const point = projection.fromLatLngToDivPixel(this.position);
-      if (!point) return;
-
-      this.div.style.left = `${point.x}px`;
-      this.div.style.top = `${point.y}px`;
-    }
-
-    onRemove() {
-      if (this.div?.parentNode) {
-        this.div.parentNode.removeChild(this.div);
-      }
-      this.div = null;
-    }
-  };
-}
-
 class MapManager {
+  escapeHtml(value) {
+    return String(value ?? '').replace(/[&<>"']/g, (character) => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[character]));
+  }
+
+  formatInfoNumber(value) {
+    if (value == null || String(value).trim() === '') return '-';
+    const number = Number(value);
+    return Number.isFinite(number)
+      ? number.toLocaleString('es-MX', { maximumFractionDigits: 2, useGrouping: false })
+      : this.escapeHtml(value);
+  }
+
   constructor(elementId) {
-    ensureMapLabelOverlayClass();
+    if (typeof MGPCMapLabels === 'undefined' || typeof MGPCMapLabels.forMap !== 'function') {
+      throw new Error('No se pudo cargar el sistema de etiquetas del mapa. Recarga la página.');
+    }
 
     this.map = new google.maps.Map(document.getElementById(elementId), {
       center: { lat: CONFIG.MAP.center[0], lng: CONFIG.MAP.center[1] },
@@ -86,6 +32,7 @@ class MapManager {
       gestureHandling: 'greedy'
     });
 
+    this.labels = MGPCMapLabels.forMap(this.map);
     this.originalPolygons = [];
     this.editablePolygons = [];
     this.referenceObjects = [];
@@ -155,7 +102,7 @@ class MapManager {
         const lng = Number(coordinate[0]);
         const lat = Number(coordinate[1]);
 
-        if (!Number.isFinite(lng) || !Number.isFinite(lat)) {
+        if (!Number.isFinite(lng) || !Number.isFinite(lat) || Math.abs(lng) > 180 || Math.abs(lat) > 90) {
           throw new Error(
             `Coordenada inválida recibida: [${coordinate[0]}, ${coordinate[1]}]`
           );
@@ -214,29 +161,35 @@ class MapManager {
     });
   }
 
-  // Crea una etiqueta de texto centrada en el centroide (turf.centroid)
-  // del feature. Devuelve null si no se pudo calcular (geometría
-  // inválida) en vez de lanzar, para no tumbar el resto del renderizado.
-  // pane: 'overlayLayer' (default, igual que antes) u 'floatPane' para
-  // que la etiqueta quede por encima de los polígonos.
-  createFeatureLabel(feature, html, className, pane = 'overlayLayer') {
+  // Todas las etiquetas participan en la misma agrupacion por capa.
+  // Sus claves son estables entre referencias y resultados.
+  createFeatureLabel(feature, layer, variant = 'reference', percentage = null) {
+    let position;
     try {
-      const centroid = turf.centroid(feature);
-      const [lng, lat] = centroid.geometry.coordinates;
-
+      const [lng, lat] = turf.centroid(feature).geometry.coordinates;
       if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
-
-      return new MapLabelOverlay(
-        new google.maps.LatLng(lat, lng),
-        html,
-        this.map,
-        className,
-        pane
-      );
+      position = { lat, lng };
     } catch (error) {
       console.warn('No se pudo calcular la etiqueta del feature:', error);
       return null;
     }
+    const p = feature.properties || {};
+    const isSection = layer === 'section';
+    const text = String((isSection ? p.seccion : p.manzana) ?? '-');
+    const identifier = isSection ? String(p.seccion ?? '-') : `${p.seccion ?? '-'}:${p.manzana ?? '-'}`;
+    const key = p.seccion == null || (!isSection && p.manzana == null)
+      ? `${identifier}:${position.lng},${position.lat}` : identifier;
+    const title = isSection ? 'Sección' : 'Manzana';
+    const content = `<strong>${title}: ${this.escapeHtml(text)}</strong><br>` +
+      (isSection ? '' : `Sección: ${this.escapeHtml(p.seccion ?? '-')}<br>`) +
+      `Lista Nominal: ${this.formatInfoNumber(p.LN ?? p.ln)}` +
+      (percentage === null ? '' : `<br>% dentro de la zona afectada: ${this.formatInfoNumber(percentage)}%`);
+    return this.labels.add({
+      layer, key, text, position, variant,
+      color: variant==='results'?(isSection?'#C06A00':'#C00000'):(isSection?'#C06A00':'#8A3880'),
+      name: `${title} ${text}`,
+      onClick: () => this.showInfoWindow(null, content, new google.maps.LatLng(position.lat, position.lng))
+    });
   }
 
   // ------------------------------------------------------------
@@ -255,7 +208,7 @@ class MapManager {
 
     pathSets.forEach((paths) => {
       const originalPolygon = this.createPolygon(paths, {
-        strokeColor: '#000000',
+        strokeColor: '#4b2e83',
         strokeOpacity: 1,
         strokeWeight: 4,
         fillColor: '#4B2E83',
@@ -265,10 +218,10 @@ class MapManager {
       });
 
       const editablePolygon = this.createPolygon(paths, {
-        strokeColor: '#1565c0',
+        strokeColor: '#117d76',
         strokeOpacity: 1,
         strokeWeight: 4,
-        fillColor: '#cfe0fb',
+        fillColor: '#d9eee9',
         fillOpacity: 0.15,
         editable: false,
         clickable: false
@@ -328,6 +281,38 @@ class MapManager {
     return this.polygonsToGeoJSON(this.editablePolygons);
   }
 
+  // Restaurar una propuesta guardada al volver de la etapa cartográfica;
+  // el polígono oficial original permanece disponible para la comparación.
+  restoreEditedGeometry(featureOrGeometry) {
+    const geometry = featureOrGeometry?.type === 'Feature'
+      ? featureOrGeometry.geometry : featureOrGeometry;
+    if (!geometry || !['Polygon', 'MultiPolygon'].includes(geometry.type)) {
+      throw new Error('La propuesta guardada debe ser Polygon o MultiPolygon.');
+    }
+    const pathSets = this.geoJsonToGooglePaths(geometry);
+    if (pathSets.length === 0 || pathSets.some((paths) => paths.length === 0)) {
+      throw new Error('La propuesta guardada no contiene un polígono válido.');
+    }
+    const restored = [];
+    try {
+      pathSets.forEach((paths) => restored.push(this.createPolygon(paths, {
+        strokeColor: '#117d76',
+        strokeOpacity: 1,
+        strokeWeight: 4,
+        fillColor: '#d9eee9',
+        fillOpacity: 0.15,
+        editable: this.editingEnabled,
+        clickable: this.editingEnabled
+      })));
+    } catch (error) {
+      this.clearObjects(restored);
+      throw error;
+    }
+    this.clearObjects(this.editablePolygons);
+    this.editablePolygons = restored;
+    return this.getEditedGeoJSON();
+  }
+
   // ------------------------------------------------------------
   // REFERENCIA: MANZANAS
   // ------------------------------------------------------------
@@ -343,6 +328,7 @@ class MapManager {
       if (!feature?.geometry) return;
 
       try {
+        const p = feature.properties || {};
         const pathSets = this.geoJsonToGooglePaths(feature.geometry);
 
         pathSets.forEach((paths) => {
@@ -352,23 +338,21 @@ class MapManager {
             strokeWeight: esSeccion ? 2 : 1.2,
             fillColor: esSeccion ? '#C06A00' : '#8A3880',
             fillOpacity: esSeccion ? 0.05 : 0.05,
-            clickable: false,
+            clickable: true,
             zIndex: 1
           });
 
+          polygon.addListener('click', (event) => {
+            const title = esSeccion
+              ? `Sección: ${this.escapeHtml(p.seccion ?? '-')}`
+              : `Manzana: ${this.escapeHtml(p.manzana ?? '-')}`;
+            const section = esSeccion ? '' : `Sección: ${this.escapeHtml(p.seccion ?? '-')}<br>`;
+            this.showInfoWindow(polygon, `<strong>${title}</strong><br>${section}Lista Nominal: ${this.formatInfoNumber(p.LN ?? p.ln)}`, event?.latLng);
+          });
           this.referenceObjects.push(polygon);
         });
 
-        const p = feature.properties || {};
-        const html = esSeccion
-          ? `Sección: ${p.seccion ?? '-'}`
-          : `Manzana: ${p.manzana ?? '-'}<br>Sección: ${p.seccion ?? '-'}<br>LN: ${p.LN ?? p.ln ?? '-'}`;
-
-        const label = this.createFeatureLabel(
-          feature,
-          html,
-          esSeccion ? 'label-seccion label-referencia' : 'label-manzana label-referencia'
-        );
+        const label = this.createFeatureLabel(feature, esSeccion ? 'section' : 'block', 'reference');
 
         if (label) this.referenceObjects.push(label);
       } catch (error) {
@@ -439,7 +423,8 @@ class MapManager {
       if (!feature?.geometry) return;
 
       try {
-        const pct = feature.properties?.porcentaje_afectado ?? 100;
+        const rawPct = Number(feature.properties?.porcentaje_afectado ?? 100);
+        const pct = Number.isFinite(rawPct) ? Math.max(0, Math.min(100, rawPct)) : 0;
         const pathSets = this.geoJsonToGooglePaths(feature.geometry);
 
         pathSets.forEach((paths) => {
@@ -452,26 +437,20 @@ class MapManager {
             zIndex: 5
           });
 
-          polygon.addListener('click', () => {
+          polygon.addListener('click', (event) => {
             const p = feature.properties || {};
             const content =
-              `<strong>Manzana ${p.manzana ?? ''}</strong><br>` +
-              `Sección: ${p.seccion ?? '-'}<br>` +
-              `Lista Nominal: ${p.LN ?? p.ln ?? '-'}<br>` +
-              `% dentro de la zona afectada: ${pct}%`;
-            this.showInfoWindow(polygon, content);
+              `<strong>Manzana ${this.escapeHtml(p.manzana ?? '')}</strong><br>` +
+              `Sección: ${this.escapeHtml(p.seccion ?? '-')}<br>` +
+              `Lista Nominal: ${this.formatInfoNumber(p.LN ?? p.ln)}<br>` +
+              `% dentro de la zona afectada: ${this.formatInfoNumber(pct)}%`;
+            this.showInfoWindow(polygon, content, event?.latLng);
           });
 
           this.manzanasResultObjects.push(polygon);
         });
 
-        const p = feature.properties || {};
-        const label = this.createFeatureLabel(
-          feature,
-          `Manzana: ${p.manzana ?? '-'}<br>Sección: ${p.seccion ?? '-'}<br>LN: ${p.LN ?? p.ln ?? '-'}`,
-          'label-manzana',
-          'floatPane'
-        );
+        const label = this.createFeatureLabel(feature, 'block', 'results', pct);
 
         if (label) this.manzanasResultObjects.push(label);
       } catch (error) {
@@ -493,7 +472,8 @@ class MapManager {
       if (!feature?.geometry) return;
 
       try {
-        const pct = feature.properties?.porcentaje_afectado ?? 100;
+        const rawPct = Number(feature.properties?.porcentaje_afectado ?? 100);
+        const pct = Number.isFinite(rawPct) ? Math.max(0, Math.min(100, rawPct)) : 0;
         const pathSets = this.geoJsonToGooglePaths(feature.geometry);
 
         pathSets.forEach((paths) => {
@@ -506,25 +486,19 @@ class MapManager {
             zIndex: 5
           });
 
-          polygon.addListener('click', () => {
+          polygon.addListener('click', (event) => {
             const p = feature.properties || {};
             const content =
-              `<strong>Sección: ${p.seccion ?? ''}</strong><br>` +
-              `Lista Nominal: ${p.LN ?? p.ln ?? '-'}<br>` +
-              `% dentro de la zona afectada: ${pct}%`;
-            this.showInfoWindow(polygon, content);
+              `<strong>Sección: ${this.escapeHtml(p.seccion ?? '')}</strong><br>` +
+              `Lista Nominal: ${this.formatInfoNumber(p.LN ?? p.ln)}<br>` +
+              `% dentro de la zona afectada: ${this.formatInfoNumber(pct)}%`;
+            this.showInfoWindow(polygon, content, event?.latLng);
           });
 
           this.seccionesResultObjects.push(polygon);
         });
 
-        const p = feature.properties || {};
-        const label = this.createFeatureLabel(
-          feature,
-          `Sección: ${p.seccion ?? '-'}`,
-          'label-seccion',
-          'floatPane'
-        );
+        const label = this.createFeatureLabel(feature, 'section', 'results', pct);
 
         if (label) this.seccionesResultObjects.push(label);
       } catch (error) {
@@ -551,30 +525,36 @@ class MapManager {
 
       if (!Number.isFinite(lng) || !Number.isFinite(lat)) return;
 
-      const marker = new google.maps.Marker({
-        map: this.map,
+      const p = feature.properties || {};
+      const content =
+        `<strong>Localidad: ${this.escapeHtml(p.localidad ?? '')}</strong><br>` +
+        `Sección: ${this.escapeHtml(p.seccion ?? '-')}<br>` +
+        `Lista Nominal: ${this.formatInfoNumber(p.LN ?? p.ln)}`;
+      const marker = this.labels.add({
+        layer: 'locality',
+        key: `${p.seccion ?? '-'}:${p.localidad ?? '-'}:${lng},${lat}`,
+        text: String(p.localidad ?? '-'),
+        name: `Localidad ${p.localidad ?? '-'}`,
         position: { lat, lng },
-        zIndex: 6
+        image: 'img/localidad.png',
+        variant: 'results',
+        onClick: () => this.showInfoWindow(null, content, new google.maps.LatLng(lat, lng))
       });
-
-      marker.addListener('click', () => {
-        const p = feature.properties || {};
-        const content =
-          `<strong>Localidad: ${p.localidad ?? ''}</strong><br>` +
-          `Sección: ${p.seccion ?? '-'}<br>` +
-          `Lista Nominal: ${p.LN ?? p.ln ?? '-'}`;
-        this.showInfoWindow(marker, content);
-      });
-
       this.localidadResultObjects.push(marker);
     });
   }
 
-  showInfoWindow(object, content) {
+  showInfoWindow(object, content, position) {
     if (this.infoWindow) this.infoWindow.close();
 
     this.infoWindow = new google.maps.InfoWindow({ content });
-    this.infoWindow.open({ map: this.map, anchor: object });
+    if (position || object?.getPath) {
+      // Polygon no es un ancla de InfoWindow; usar la posición del clic.
+      this.infoWindow.setPosition(position || object.getPath().getAt(0));
+      this.infoWindow.open({ map: this.map });
+    } else {
+      this.infoWindow.open({ map: this.map, anchor: object });
+    }
   }
 
   toggleReferenceVisible(visible) {

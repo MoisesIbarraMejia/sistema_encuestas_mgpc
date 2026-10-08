@@ -26,6 +26,8 @@ const Api = (() => {
   async function handle(res) {
     let body;
 
+    if (res.status === 204) return null;
+
     try {
       body = await res.json();
     } catch (e) {
@@ -34,37 +36,86 @@ const Api = (() => {
       );
     }
 
-    if (!res.ok) {
-      throw new Error(
-        body?.error || `Error HTTP ${res.status}`
-      );
+    if (!res.ok || body?.success === false || body?.status === 'error' || body?.error) {
+      const detail = typeof body?.error === 'string'
+        ? body.error
+        : (body?.error?.message || body?.message);
+      const error = new Error(detail || `La API rechazó la operación (HTTP ${res.status})`);
+      error.status = res.status;
+      throw error;
     }
 
+    if (body === null || typeof body !== 'object') {
+      throw new Error('La API devolvió un resultado vacío o con un formato inesperado.');
+    }
     return body;
   }
 
-  async function get(path, queryParams = {}) {
-    const res = await fetch(
-      buildUrl(path, queryParams),
-      { method: 'GET' }
-    );
-
-    return handle(res);
+  async function request(path, options, queryParams = {}) {
+    let response;
+    try {
+      response = await fetch(buildUrl(path, queryParams), {
+        credentials: 'same-origin',
+        ...options
+      });
+    } catch (error) {
+      throw new Error('No se pudo contactar con el servidor MGPC. Revisa la conexión e intenta nuevamente.');
+    }
+    return handle(response);
   }
 
-  async function post(path, bodyObj, queryParams = {}) {
-    const res = await fetch(
-      buildUrl(path, queryParams),
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(bodyObj)
-      }
-    );
+  function get(path, queryParams = {}) {
+    return request(path, { method: 'GET' }, queryParams);
+  }
 
-    return handle(res);
+  function post(path, bodyObj, queryParams = {}) {
+    return request(path, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(bodyObj)
+    }, queryParams);
+  }
+
+  function normalizeFeatureCollection(body) {
+    if (body?.type !== 'FeatureCollection' || !Array.isArray(body.features)) {
+      throw new Error('La API no devolvió una colección GeoJSON válida.');
+    }
+    body.features.forEach((feature) => {
+      if (feature?.type !== 'Feature') throw new Error('La API devolvió un elemento GeoJSON inválido.');
+      feature.properties = feature.properties || {};
+      // Spatial API publica estas métricas al nivel del Feature. La interfaz
+      // las consulta en properties: conservar ambas representaciones.
+      ['porcentaje_afectado', 'area_total_m2', 'area_interseccion_m2'].forEach((key) => {
+        if (feature[key] !== undefined && feature[key] !== null) {
+          const value = Number(feature[key]);
+          if (!Number.isFinite(value)) throw new Error('La API devolvió una métrica espacial inválida: ' + key);
+          feature.properties[key] = value;
+        }
+      });
+    });
+    return body;
+  }
+
+  async function getAllFeatures(path, queryParams) {
+    // filter_2 no devuelve total y su límite predeterminado es 10 millones.
+    // Consultar páginas acotadas y no presentar catálogos truncados.
+    const limit = 1000;
+    const features = [];
+    for (let offset = 0; offset < 100000; offset += limit) {
+      const page = normalizeFeatureCollection(await get(path, { ...queryParams, limit, offset }));
+      features.push(...page.features);
+      if (page.features.length < limit) return { ...page, features };
+    }
+    throw new Error('La consulta excedió el tamaño permitido. Ajusta el filtro antes de continuar.');
+  }
+
+  // El catálogo distrital es el mismo para ambas etapas.
+  function getDistrictUTs(district) {
+    const number = Number(district);
+    if (!Number.isInteger(number) || number < 1 || number > 33) {
+      return Promise.reject(new Error('Selecciona un distrito válido (1 a 33).'));
+    }
+    return getAllFeatures(CONFIG.ENDPOINTS.utPorCve, { dtto_loc: number });
   }
 
   // ============================================================
@@ -75,7 +126,7 @@ const Api = (() => {
   // ============================================================
 
   function getUTByCve(cveUt) {
-    return get(
+    return getAllFeatures(
       CONFIG.ENDPOINTS.utPorCve,
       { cve_ut: cveUt }
     );
@@ -97,7 +148,7 @@ const Api = (() => {
         include_percentage: false,
         buffer_meters: bufferMeters
       }
-    );
+    ).then(normalizeFeatureCollection);
   }
 
   // ============================================================
@@ -124,12 +175,9 @@ const Api = (() => {
   // ============================================================
 
   function getSeccionesDeUT(cveUt) {
-    return get(
-      `/filter/${CONFIG.TABLES.secciones}`,
-      {
-        clave: cveUt,
-        limit: 500
-      }
+    return getAllFeatures(
+      `/filter_2/${CONFIG.TABLES.secciones}`,
+      { clave: cveUt }
     );
   }
 
@@ -143,6 +191,11 @@ const Api = (() => {
       cve_ut: cveUt,
       meta,
       ttl_minutes: CONFIG.CACHE_TTL_MINUTES
+    }).then((body) => {
+      if (typeof body?.cache_id !== 'string' || !body.cache_id) {
+        throw new Error('La API no devolvió el identificador de la geometría temporal.');
+      }
+      return body;
     });
   }
 
@@ -182,7 +235,7 @@ const Api = (() => {
     return post(
       `/intersect/${table}`,
       body
-    );
+    ).then(normalizeFeatureCollection);
   }
 
   // ============================================================
@@ -234,6 +287,7 @@ const Api = (() => {
   }
 
   return {
+    getDistrictUTs,
     getUTByCve,
     getSeccionesDeUT,
     cacheStore,

@@ -1,7 +1,7 @@
-:root {
+﻿:root {
   /* --- Color: marca --- */
-  --purple: #4B2E83;
-  --purple-dark: #37225f;
+  --purple: var(--mgpc-purple, #4b2e83);
+  --purple-dark: var(--mgpc-purple-dark, #35205e);
   --purple-light: #efeaf7;
   --purple-surface: #f6f3fc;
 
@@ -13,13 +13,13 @@
   --amber: #a15c00;
 
   /* --- Color: neutrales --- */
-  --text: #201f26;
-  --text-muted: #6c6a78;
+  --text: var(--mgpc-ink, #262234);
+  --text-muted: var(--mgpc-muted, #726c80);
   --text-faint: #9997a3;
-  --border: #e2dcee;
+  --border: var(--mgpc-border, #e3deeb);
   --border-strong: #cfc6e6;
   --surface: #ffffff;
-  --gray-bg: #f5f3fa;
+  --gray-bg: var(--mgpc-background, #f5f4f8);
 
   /* --- Espaciado (base 4px) --- */
   --sp-1: 4px;
@@ -70,20 +70,7 @@ body {
 .app-header h1 { margin: 0; font-size: var(--text-xl); font-weight: 600; }
 .app-subtitle { font-size: var(--text-xs); opacity: 0.85; }
 
-/* Modo embebido: el sistema que nos aloja (SAM) ya muestra su propio
-   título de fase ("Fase 2. Cálculo de Encuestas"), así que repetir
-   nuestro encabezado aquí es ruido visual y resta alto útil dentro del
-   iframe. Se detecta en app.js (window.self !== window.top) y se
-   aplica la clase .is-embedded al <body>.
-   IMPORTANTE: NO se toca la altura de body/app-layout aquí. body sigue
-   con height:100vh (el 100vh es el alto que el iframe nos da, no el de
-   la ventana del navegador) para que .sidebar conserve su scroll
-   interno (overflow-y:auto). Si aquí se pone height:auto, el documento
-   crece más allá de lo que el iframe muestra y, si el iframe del
-   sistema padre no expone su propia barra de scroll, el contenido de
-   abajo (parámetros, "Analizar", Resultados) queda cortado sin forma
-   de llegar a él — justo el bug que esto corrige. */
-body.is-embedded .app-header { display: none; }
+
 
 .app-layout {
   flex: 1;
@@ -255,30 +242,6 @@ input:disabled, select:disabled {
 .hidden { display: none !important; }
 .panel-disabled { opacity: 0.45; pointer-events: none; }
 
-.map-feature-label {
-  position: absolute;
-  transform: translate(-50%, -50%);
-  background: rgba(255, 255, 255, 0.98);
-  border: 1px solid rgba(0, 0, 0, 0.35);
-  border-radius: 4px;
-  padding: 3px 7px;
-  font-family: Arial, Helvetica, sans-serif;
-  font-size: 11px;
-  line-height: 1.35;
-  font-weight: 600;
-  color: #1a1a1a;
-  white-space: nowrap;
-  text-align: center;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
-  pointer-events: none; /* no debe tapar los clics sobre el polígono */
-}
-.map-feature-label.label-manzana { border-color: rgba(192, 0, 0, 0.7); }
-.map-feature-label.label-seccion { border-color: rgba(192, 106, 0, 0.7); }
-.map-feature-label.label-referencia {
-  background: rgba(255, 255, 255, 0.92);
-  font-size: 10px;
-}
-
 .param-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -347,7 +310,7 @@ tbody tr:hover { background: var(--purple-surface); }
 .legend div { display: flex; align-items: center; gap: var(--sp-2); margin: 3px 0; }
 .swatch { width: 12px; height: 12px; border-radius: 3px; display: inline-block; flex-shrink: 0; }
 .swatch-original { background: #fff; border: 2px dashed var(--purple); }
-.swatch-editable { background: #cfe0fb; border: 1px solid #1565c0; }
+.swatch-editable { background: #d9eee9; border: 1px solid #117d76; }
 .swatch-affected { background: #ff6b6b; border: 1px solid var(--red); }
 .swatch-manzana { background: #ff5050; border: 1px solid var(--red); }
 .swatch-localidad { background: #8fd19e; border: 1px solid var(--green); border-radius: 50%; }
@@ -359,7 +322,7 @@ tbody tr:hover { background: var(--purple-surface); }
   padding: 6px 14px;
   flex-shrink: 0;
 }
-body.is-embedded .app-footer { padding: 4px 14px; }
+
 
 .map-drawing-controls {
   display: flex;
@@ -384,48 +347,57 @@ body.is-embedded .app-footer { padding: 4px 14px; }
   background: var(--purple-light);
 }
 
-/* --- Panel de diagnóstico de integración (postMessage) ---
-   Es una herramienta para desarrolladores, no para la persona que usa
-   el trámite: se mantiene disponible pero visualmente discreta y
-   colapsada, para no competir con el flujo de 4 pasos. */
-#postmessage-debug-panel {
-  background: var(--gray-bg);
-  border-style: dashed;
-}
-#postmessage-debug-panel summary {
-  font-size: var(--text-xs);
-  color: var(--text-muted);
-  font-weight: 600;
-  display: flex;
-  align-items: center;
-  gap: var(--sp-2);
-  cursor: pointer;
-  list-style: none;
-}
-#postmessage-debug-panel summary::-webkit-details-marker { display: none; }
-#postmessage-debug-panel h2 { font-size: var(--text-xs); color: var(--text-muted); }
-#postmessage-envio-debug-panel {
-  background: var(--gray-bg);
-  border-style: dashed;
-}
-#postmessage-envio-debug-panel summary {
-  font-size: var(--text-xs);
-  color: var(--text-muted);
-  font-weight: 600;
-  display: flex;
-  align-items: center;
-  gap: var(--sp-2);
-  cursor: pointer;
-  list-style: none;
-}
-#postmessage-envio-debug-panel summary::-webkit-details-marker { display: none; }
-#postmessage-envio-debug-panel h2 { font-size: var(--text-xs); color: var(--text-muted); }
-
-/* --- Responsivo: cuando el iframe embebido es angosto, el sidebar
+/* --- Responsivo: cuando la pantalla es angosta, el sidebar
    pasa a ocupar todo el ancho y el mapa se acomoda debajo, en vez de
    generar scroll horizontal / recortar el panel de pasos. --- */
 @media (max-width: 760px) {
   .app-layout { flex-direction: column; }
   .sidebar { width: 100%; min-width: 0; border-right: none; border-bottom: 1px solid var(--border); }
   .map-wrap { min-height: 420px; }
+}
+
+/* Presentación compartida con el portal territorial. */
+.survey-page { height: 100dvh; }
+.survey-page .app-header { color: var(--text); background: #f8f6fb; padding: 19px 25px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; gap: 18px; }
+.survey-page .app-header h1 { font-size: 20px; font-weight: 650; letter-spacing: -.025em; margin-top: 5px; }
+.survey-eyebrow { font-size: 10px; font-weight: 700; letter-spacing: .09em; color: #117d76; }
+.survey-page .app-subtitle { color: var(--text-muted); opacity: 1; font-size: 12px; }
+.survey-page .sidebar { width: 375px; background: #f5f4f8; padding: 16px; gap: 12px; }
+.survey-page .panel { border-radius: 11px; padding: 17px; }
+.survey-page .panel-head { margin-bottom: 14px; }
+.survey-page .panel-disabled { opacity: .65; }
+.survey-page .btn { border-radius: 7px; padding: 11px; font-size: 12px; }
+.survey-page .hint { line-height: 1.7; }
+.survey-page input, .survey-page select { padding: 10px; border-radius: 7px; }
+.survey-page .checkbox-row input { padding: 0; }
+.survey-context-card { padding: 5px 4px 12px; }
+.survey-context-card h2 { font-size: 17px; font-weight: 650; margin: 8px 0; }
+.survey-context-card a { font-size: 11px; color: #6c528f; text-decoration: none; }
+.global-ut-selection { display: none; }
+.survey-stage-footer { flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 13px 25px; background: #fff; border-top: 1px solid var(--border); }
+.survey-stage-footer p { margin: 0; font-size: 12px; }
+.survey-stage-footer p strong { display: block; color: var(--purple); font-weight: 600; }
+.survey-stage-footer p span { display: block; color: var(--text-muted); font-size: 11px; margin-top: 4px; }
+.survey-stage-footer button { display: flex; align-items: center; gap: 24px; padding: 12px 20px; background: #117d76; color: white; border: 0; border-radius: 8px; font-size: 12px; cursor: pointer; font-weight: 600; }
+.survey-stage-footer button:disabled { background: #e3e8e7; color: #84938f; cursor: not-allowed; }
+.survey-page .app-footer { background: #efedf3; color: #77707f; padding: 5px 25px; font-size: 10px; }
+.map-caption { position: absolute; top: 17px; left: 50%; transform: translateX(-50%); z-index: 1; background: #fffffff2; color: #4a4059; border: 1px solid #ded8e7; border-radius: 7px; box-shadow: 0 2px 8px #35205e0b; padding: 10px 13px; display: flex; align-items: center; gap: 8px; white-space: nowrap; pointer-events: none; font-size: 10px; letter-spacing: .06em; font-weight: 600; }
+.map-caption > span:last-child { border-left: 1px solid #e3deeb; padding-left: 8px; color: #726c80; font-weight: 400; letter-spacing: 0; }
+.map-live-dot { width: 6px; height: 6px; background: #117d76; border-radius: 50%; }
+.map-error { position: absolute; inset: 70px 20px auto; z-index: 2; padding: 16px; background: #fff0ef; color: #943d37; border: 1px solid #ecc7c2; border-radius: 8px; font-size: 13px; }
+.guide-copy { font-size: 13px; line-height: 1.7; color: var(--text); }
+.case-badge { display: inline-block; padding: 6px 9px; font-size: 11px; border-radius: 6px; background: var(--purple-light); color: var(--purple); margin: 0 0 12px; }
+.survey-context-card > a { display: block; }
+.calculation-guide { border-left: 3px solid #117d76 !important; }
+.survey-page .table-scroll { overflow-x: auto; }
+@media (max-width: 760px) {
+  .survey-page { height: auto; min-height: 100dvh; }
+  .survey-page .app-header { padding: 17px; align-items: flex-start; flex-direction: column; gap: 8px; }
+  .survey-page .app-layout { flex: none; }
+  .survey-page .sidebar { width: 100%; overflow: visible; }
+  .survey-page .map-wrap { height: 470px; flex: none; }
+  .survey-stage-footer { padding: 16px; flex-wrap: wrap; }
+  .survey-stage-footer button { width: 100%; justify-content: center; }
+  .map-caption { top: 10px; }
+  .map-caption > span:last-child { display: none; }
 }

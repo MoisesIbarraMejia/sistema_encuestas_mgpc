@@ -1,0 +1,33 @@
+/* Etiquetas compartidas: la clave de UT siempre encima del nombre. */
+.mgpc-label-pane { position:absolute; left:0; top:0; pointer-events:none; z-index:1000; }
+.mgpc-map-label,.mgpc-map-cluster { position:absolute; transform:translate(-50%,-50%); box-sizing:border-box; margin:0; font-family:Arial,Helvetica,sans-serif; text-align:center; box-shadow:0 2px 6px #14203326; }
+.mgpc-map-label { display:block; width:max-content; min-width:28px; padding:5px 7px; border:2px solid var(--label-color); border-radius:7px; background:#fffffff5; color:#192033; font-size:12px; line-height:1.35; white-space:nowrap; pointer-events:none; }
+button.mgpc-map-label { cursor:pointer; pointer-events:auto; }
+.mgpc-map-label .mgpc-label-key { display:block; font-size:13px; font-weight:700; line-height:18px; margin:0; }
+.mgpc-map-label.mgpc-label-ut { width:160px; min-width:160px; max-width:160px; height:auto; padding:8px 10px; white-space:normal; }
+.mgpc-label-ut .mgpc-label-key { color:var(--label-color); }
+.mgpc-label-ut .mgpc-label-name { display:block; margin-top:4px; font-size:11px; font-weight:500; line-height:1.4; white-space:normal; overflow-wrap:anywhere; }
+.mgpc-label-section { min-width:calc(4ch + 18px); }
+.mgpc-map-label.mgpc-label-locality { width:33px; height:32px; min-width:0; padding:0; background:none; border:0; box-shadow:none; }
+.mgpc-locality-icon { display:block; width:33px; height:32px; }
+.mgpc-map-cluster { display:flex; flex-direction:column; gap:4px; width:140px; padding:6px; border:1px solid #d6d0df; border-radius:10px; background:#fff; pointer-events:auto; cursor:pointer; }
+.mgpc-map-cluster:hover { box-shadow:0 3px 12px #21133345; }
+.mgpc-map-cluster:focus-visible,.mgpc-map-label:focus-visible { outline:3px solid #291754; outline-offset:3px; }
+.mgpc-cluster-badge { display:block; height:24px; line-height:22px; padding:0 6px; border:1px solid var(--label-color); border-left:5px solid var(--label-color); border-radius:5px; color:var(--label-color); background:#fff; font-size:12px; font-weight:700; white-space:nowrap; }
+.mgpc-cluster-details { width:260px; max-width:100%; color:#241e32; font-family:Arial,Helvetica,sans-serif; }
+.mgpc-cluster-details h3 { margin:0 0 10px; font-size:15px; line-height:1.4; }
+.mgpc-cluster-zoom { width:100%; padding:9px; border:1px solid #d4c8e4; border-radius:6px; color:#4b2e83; background:#f4effa; cursor:pointer; }
+.mgpc-cluster-members { max-height:230px; overflow:auto; margin-top:8px; }
+.mgpc-cluster-layer-title { margin:12px 0 4px; font-size:12px; color:var(--label-color); border-left:4px solid var(--label-color); padding-left:6px; }
+.mgpc-cluster-member { display:block; width:100%; padding:8px; border:0; border-bottom:1px solid #ece8f1; background:white; text-align:left; color:#241e32; cursor:pointer; }
+.mgpc-cluster-member:hover,.mgpc-cluster-member:focus-visible { background:#f4f0f9; }
+.mgpc-cluster-member strong,.mgpc-cluster-member span { display:block; font-size:12px; line-height:1.4; overflow-wrap:anywhere; }
+/* Optional survey cards retain the layer color and participate in the same grouping. */
+.mgpc-map-label.mgpc-label-card { width:150px; min-width:150px; max-width:150px; height:auto; padding:8px 10px; border:2px solid var(--label-color); background:#fffffff5; box-shadow:0 2px 6px #14203326; white-space:normal; text-align:left; overflow-wrap:anywhere; }
+.mgpc-label-card .mgpc-label-key { font-size:12px; line-height:18px; color:var(--label-color); }
+.mgpc-label-card .mgpc-label-name { display:block; margin-top:2px; font-size:11px; font-weight:400; line-height:1.4; }
+.mgpc-label-details { display:block; margin-top:6px; }
+.mgpc-label-detail { display:block; font-size:11px; line-height:18px; overflow-wrap:anywhere; }
+.mgpc-label-detail .mgpc-detail-name,.mgpc-label-detail .mgpc-detail-value { display:inline; font-size:11px; line-height:18px; }
+.mgpc-label-detail .mgpc-detail-name { font-weight:400; }
+.mgpc-label-detail .mgpc-detail-value { font-weight:700; }

@@ -1,184 +1,59 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="es">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Sistema de Cálculo de Encuestas MGPC — Modificación de Límites de UT</title>
-
-<!-- Turf.js (operaciones geométricas en el cliente) -->
-<script src="https://unpkg.com/@turf/turf@6/turf.min.js"></script>
-<!-- ExcelJS (genera el .xlsx con estilos reales -colores, negritas- en el
-     cliente, para el botón "Exportar resultados" y para el postMessage
-     que se le manda al sistema padre con el Excel adjunto) -->
-<script src="https://unpkg.com/exceljs@4.4.0/dist/exceljs.min.js"></script>
-<link rel="stylesheet" href="css/style.css">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MGPC · Selección territorial</title>
+  <link rel="stylesheet" href="css/shared.css?v=20261007-labels-1">
+  <link rel="stylesheet" href="css/selection.css?v=20261007-labels-1">
 </head>
 <body>
-
-<header class="app-header">
-  <h1>Sistema de Cálculo de Encuestas — Modificación de Límites Territoriales (MGPC)</h1>
-  <span class="app-subtitle">IECM · Muestreo por población realmente afectada</span>
-</header>
-
-<div class="app-layout">
-
-  <aside class="sidebar">
-
-    <details class="panel" id="postmessage-debug-panel">
-      <summary>
-        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 3v4"></path><path d="M15 3v4"></path><rect x="6" y="7" width="12" height="6" rx="2"></rect><path d="M12 13v4"></path><path d="M9 21h6"></path></svg>
-        <h2 style="display:inline">Integración (postMessage recibido)</h2>
-      </summary>
-      <p class="hint">Este panel es solo para pruebas de integración: aquí se ve, en vivo, cada mensaje que llega desde el sistema que embebe esta página (SAM). Ábrelo mientras pruebas para confirmar que el mensaje llega y con qué datos.</p>
-      <div id="postmessage-debug" style="font-family:monospace;font-size:11px;max-height:160px;overflow:auto;background:#fafafa;border:1px solid #eee;padding:6px;border-radius:5px;"></div>
-    </details>
-
-    <!-- APARTADO TEMPORAL — solo para comprobar, durante las pruebas de
-         integración, que el postMessage de Fase 2 (con el Excel adjunto)
-         sí se está enviando al sistema padre. Se puede quitar cuando el
-         sistema padre ya tenga su propio listener funcionando y esto se
-         haya verificado en un ambiente real. -->
-    <details class="panel" id="postmessage-envio-debug-panel">
-      <summary>
-        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="22" y1="2" x2="11" y2="13"></line><path d="M22 2 15 22l-4-9-9-4 20-7z"></path></svg>
-        <h2 style="display:inline">Verificación: envío al sistema padre (temporal)</h2>
-      </summary>
-      <p class="hint">Cada vez que termina un análisis, se manda un postMessage con <code>fase: 2</code> y el Excel adjunto en base64 al sistema que embebe esta página. Aquí se ve si ese envío se disparó correctamente (o por qué no, ej. si se está probando en modo standalone, fuera de un iframe).</p>
-      <div id="postmessage-envio-debug" style="font-family:monospace;font-size:11px;max-height:160px;overflow:auto;background:#fafafa;border:1px solid #eee;padding:6px;border-radius:5px;">Todavía no se ha enviado ningún resultado.</div>
-    </details>
-
-    <section class="panel step" id="panel-paso-1">
-      <div class="panel-head"><span class="step-num">1</span><h2>Seleccionar Unidad Territorial</h2></div>
-      <label for="ut-search" class="hidden">Clave de UT</label>
-      <input type="text" id="ut-search" placeholder="Escribe la clave de la UT (ej. 05-030)…" autocomplete="off">
-      <button id="btn-cargar-ut" class="btn btn-primary" disabled>
-        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-7-6.2-7-11a7 7 0 0 1 14 0c0 4.8-7 11-7 11z"></path><circle cx="12" cy="10" r="2.5"></circle></svg>
-        Cargar UT en el mapa
-      </button>
-      <p class="hint hidden" id="lock-note">
-        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"></rect><path d="M8 11V7a4 4 0 0 1 8 0v4"></path></svg>
-        Clave de UT y tipo de caso recibidos automáticamente del sistema SAM — bloqueados para edición manual.
-      </p>
-    </section>
-
-    <section class="panel step" id="panel-paso-2">
-      <div class="panel-head"><span class="step-num">2</span><h2>Clasificar el caso</h2></div>
-      <label for="sel-tipo-caso">Tipo de caso</label>
-      <select id="sel-tipo-caso"></select>
-
-      <label class="checkbox-row">
-        <input type="checkbox" id="chk-referencia">
-        <span id="lbl-referencia">Mostrar manzanas de referencia (contexto visual)</span>
-      </label>
-
-      <div id="caso-pendiente-info" class="info-box hidden"></div>
-    </section>
-
-    <section class="panel step" id="panel-editar-limite">
-      <div class="panel-head"><span class="step-num">3</span><h2>Editar propuesta de límite</h2></div>
-      <p class="hint" id="editar-limite-hint">Carga la UT primero. Habilita la edición, arrastra los vértices del polígono azul para proponer el nuevo límite y luego bloquea la edición para poder calcular la zona afectada.</p>
-      <button id="btn-editar" class="btn" disabled>
-        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20l4-1 11-11-3-3L5 16l-1 4z"></path><path d="M14 5l3 3"></path></svg>
-        Habilitar edición de vértices
-      </button>
-      <button id="btn-calcular-zona" class="btn" disabled>
-        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="7"></circle><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"></circle><line x1="12" y1="2" x2="12" y2="5"></line><line x1="12" y1="19" x2="12" y2="22"></line><line x1="2" y1="12" x2="5" y2="12"></line><line x1="19" y1="12" x2="22" y2="12"></line></svg>
-        Calcular zona afectada
-      </button>
-      <div id="zona-afectada-info" class="info-box hidden"></div>
-    </section>
-
-    <details class="panel step">
-      <summary>
-        <span class="step-num">4</span>
-        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="4" y1="6" x2="20" y2="6"></line><circle cx="9" cy="6" r="2" fill="currentColor" stroke="none"></circle><line x1="4" y1="12" x2="20" y2="12"></line><circle cx="15" cy="12" r="2" fill="currentColor" stroke="none"></circle><line x1="4" y1="18" x2="20" y2="18"></line><circle cx="7" cy="18" r="2" fill="currentColor" stroke="none"></circle></svg>
-        <h2>Parámetros de muestreo</h2>
-      </summary>
-      <p class="hint">Valores por defecto recomendados — ajústalos solo si el caso lo requiere.</p>
-      <div class="param-grid">
-        <label>Z <input type="number" id="param-z" step="0.01"></label>
-        <label>p <input type="number" id="param-p" step="0.01"></label>
-        <label>q <input type="number" id="param-q" step="0.01"></label>
-        <label>d <input type="number" id="param-d" step="0.01"></label>
-        <label>Umbral de censo (N) <input type="number" id="param-umbral" step="1"></label>
-      </div>
-    </details>
-
-    <section class="panel">
-      <button id="btn-analizar" class="btn btn-primary btn-large" disabled>
-        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="5" y1="20" x2="5" y2="12"></line><line x1="12" y1="20" x2="12" y2="6"></line><line x1="19" y1="20" x2="19" y2="14"></line><line x1="3" y1="20" x2="21" y2="20"></line></svg>
-        Analizar y calcular muestra</button>
-      <div id="analizar-status" class="status-line"></div>
-    </section>
-
-    <section class="panel" id="panel-resultados" hidden>
-      <h2>
-        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M8 12.5l2.5 2.5L16 9"></path></svg>
-        Resultados
-      </h2>
-      <div class="result-summary" id="result-summary"></div>
-
-      <h3 id="titulo-tabla-manzanas">Manzanas afectadas</h3>
-      <div class="table-scroll" id="wrap-tabla-manzanas">
-        <table id="tabla-manzanas">
-          <thead><tr><th>Manzana</th><th>Sección</th><th>LN</th><th>% afectado</th><th>LN ponderada</th></tr></thead>
-          <tbody></tbody>
-        </table>
-      </div>
-
-      <div class="table-scroll hidden" id="wrap-tabla-secciones">
-        <h3>Secciones afectadas</h3>
-        <table id="tabla-secciones">
-          <thead><tr><th>Sección</th><th>LN</th><th>% afectado</th><th>LN ponderada</th></tr></thead>
-          <tbody></tbody>
-        </table>
-      </div>
-
-      <h3>Localidades afectadas</h3>
-      <div class="table-scroll">
-        <table id="tabla-localidades">
-          <thead><tr><th>Localidad</th><th>Sección</th><th>LN</th></tr></thead>
-          <tbody></tbody>
-        </table>
-      </div>
-
-      <button id="btn-exportar" class="btn">
-        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="3" y1="15" x2="21" y2="15"></line><line x1="9" y1="3" x2="9" y2="21"></line><line x1="15" y1="3" x2="15" y2="21"></line></svg>
-        Exportar resultados (Excel)
-      </button>
-    </section>
-
-  </aside>
-
-  <main class="map-wrap">
-    <div id="map"></div>
-    <div class="legend">
-      <div><span class="swatch swatch-original"></span> UT original</div>
-      <div><span class="swatch swatch-editable"></span> Propuesta (editable)</div>
-      <div><span class="swatch swatch-affected"></span> Zona afectada</div>
-      <div><span class="swatch swatch-manzana"></span> Manzanas resultado</div>
-      <div><span class="swatch swatch-localidad"></span> Localidades resultado</div>
+  <a class="skip-link" href="#main-content">Ir al contenido</a>
+  <header id="workflow-header"></header>
+  <main class="selection-main" id="main-content">
+    <div class="page-intro">
+      <div><span class="eyebrow">Instituto Electoral de la Ciudad de México</span><h1>Comienza tu propuesta</h1><p>Elige el territorio y el cambio que quieres proponer. Te guiaremos paso a paso.</p></div>
+      <img class="institution-logo" src="img/logo-iecm.png" alt="Instituto Electoral de la Ciudad de México">
     </div>
+    <div id="resume-strip" class="resume-strip" hidden><span id="resume-text"></span><a id="resume-link" href="encuestas.html">Retomar expediente →</a></div>
+    <div class="selection-grid">
+      <aside class="selection-card">
+        <div class="card-heading"><span class="step-index">01</span><h2>Distrito electoral</h2></div>
+        <div class="card-body">
+          <label for="district-select">Selecciona un distrito</label>
+          <select id="district-select"><option value="">Elegir distrito…</option></select>
+          <p class="field-hint">Las unidades territoriales se filtrarán según el distrito seleccionado.</p>
+          <div class="case-selection">
+            <label for="case-select">Tipo de caso</label>
+            <select id="case-select" aria-describedby="case-help"><option value="">Elegir tipo de caso…</option></select>
+            <p class="case-help" id="case-help" role="status">Selecciona el cambio que deseas proponer.</p>
+            <div id="new-name-field" hidden><label for="new-name">Nombre propuesto (opcional)</label><input id="new-name" type="text" maxlength="160" autocomplete="off" placeholder="Nuevo nombre de la UT"></div>
+          </div>
+          <div class="route-preview">
+            <h3>Tu ruta de trabajo</h3>
+            <div class="route-item"><span>1</span><div><strong>Prepara tu propuesta</strong><p>Modifica los límites o elige las zonas que participarán, según tu caso.</p></div></div>
+            <div class="route-item"><span>2</span><div><strong>Calcula la muestra</strong><p>Conoce cuántas personas forman la muestra para los límites preparados.</p></div></div>
+            <div class="route-item"><span>3</span><div><strong>Revisa y confirma</strong><p>Compara la propuesta y verifica los datos antes de guardarla.</p></div></div>
+          </div>
+        </div>
+      </aside>
+      <section class="selection-card" aria-labelledby="catalog-title">
+        <div class="card-heading catalog-heading"><div><span class="step-index">02</span><h2 id="catalog-title">Unidad territorial</h2></div><span class="count-pill" id="ut-count">Sin distrito</span></div>
+        <div class="catalog-tools"><label for="ut-filter">Buscar por nombre o clave de UT</label><input type="search" id="ut-filter" placeholder="Por ejemplo: 05-030 o nombre de la colonia" autocomplete="off" disabled></div>
+        <div id="catalog-status" class="catalog-empty" role="status" aria-live="polite">
+          <span class="empty-map" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="m3 6 6-3 6 3 6-3v15l-6 3-6-3-6 3Z"/><path d="M9 3v15M15 6v15"/></svg></span>
+          <strong id="catalog-status-title">Primero, elige tu distrito</strong><p id="catalog-status-description">Aquí aparecerán sus unidades territoriales para iniciar el expediente.</p><button class="text-button" id="retry-catalog" hidden>Volver a intentar</button>
+        </div>
+        <ul class="catalog-list" id="ut-list" aria-label="Unidades territoriales del distrito" hidden></ul>
+        <p id="selection-error" class="selection-message" role="alert" hidden></p>
+        <div class="selection-footer"><p id="selection-summary">Selecciona una UT y un tipo de caso para continuar.</p><button class="primary-button" id="start-survey" disabled>Preparar propuesta →</button></div>
+      </section>
+    </div>
+    <footer class="session-note"><span>MGPC · Modificación de límites territoriales</span><span>El expediente se conserva durante esta sesión de trabajo.</span></footer>
   </main>
-
-</div>
-
-<footer class="app-footer" id="log-footer">Listo.</footer>
-
-<script src="js/config.js"></script>
-<script src="js/api.js"></script>
-<script src="js/sampling.js"></script>
-<script src="js/diff.js"></script>
-<script src="js/modeloEncuesta.js"></script>
-<script src="js/mapManager.js"></script>
-<script src="js/postmessage.js"></script>
-<script src="js/app.js"></script>
-
-<!-- Google Maps JavaScript API -->
-<script
-  async
-  src="https://maps.googleapis.com/maps/api/js?key=AIzaSyCw42oKA6idOiNV51RXLHzRwYwn7MerDBI&loading=async&callback=initMap&v=weekly">
-</script>
-
+  <script src="js/config.js?v=20261007-labels-1"></script>
+  <script src="js/api.js?v=20261007-labels-1"></script>
+  <script src="js/workflow.js?v=20261007-labels-1"></script>
+  <script src="js/selection.js?v=20261007-labels-1"></script>
 </body>
 </html>

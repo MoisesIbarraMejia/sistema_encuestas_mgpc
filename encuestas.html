@@ -1,0 +1,185 @@
+﻿<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>MGPC · Calcula la muestra</title>
+  <link rel="stylesheet" href="css/shared.css?v=20261007-labels-1">
+  <link rel="stylesheet" href="css/style.css?v=20261007-labels-1">
+  <script src="https://unpkg.com/@turf/turf@6.5.0/turf.min.js"></script>
+  <script src="https://unpkg.com/exceljs@4.4.0/dist/exceljs.min.js"></script>
+  <link rel="stylesheet" href="css/map-labels.css?v=20261008-distribution-1">
+  <link rel="stylesheet" href="css/survey-distribution.css?v=20261008-route-trail-1">
+</head>
+<body class="survey-page">
+  <a class="skip-link" href="#survey-controls">Ir al cálculo de la muestra</a>
+  <header id="workflow-header"></header>
+  <header class="app-header">
+    <div><span class="survey-eyebrow">PASO 2 DE 3</span><h1>Calcula la muestra de tu propuesta</h1></div>
+    <span class="app-subtitle">Los límites preparados se conservan durante el cálculo.</span>
+  </header>
+  <div class="app-layout">
+    <aside class="sidebar" id="survey-controls" aria-label="Cálculo de encuestas">
+      <section id="survey-context-card" class="survey-context-card">
+        <span class="survey-eyebrow" id="survey-ut-key"></span>
+        <h2 id="survey-ut-name"></h2>
+        <p id="survey-case-label" class="case-badge"></p>
+        <a href="editor-territorial.html" id="survey-edit-link">← Volver a preparar los límites</a>
+      </section>
+      <section class="panel calculation-guide">
+        <h2>¿Sobre qué se calcula la muestra?</h2>
+        <p id="survey-scope" class="guide-copy"></p>
+        <p class="hint">La muestra es el número estimado de personas a consultar. El mapa te ayuda a identificar el territorio considerado.</p>
+        <label class="checkbox-row"><input type="checkbox" id="chk-referencia"><span id="lbl-referencia">Ver manzanas cercanas</span></label>
+      </section>
+      <details class="panel">
+        <summary>Opciones avanzadas del cálculo</summary>
+        <p class="hint">Puedes conservar estos valores. Modifícalos únicamente si la metodología de tu caso lo requiere.</p>
+        <div class="param-grid">
+          <label>Valor de confianza (Z)<input type="number" id="param-z" min="0.01" step="0.01" required></label>
+          <label>Proporción (p)<input type="number" id="param-p" min="0.01" max="0.99" step="0.01" required></label>
+          <label>Complemento (q)<input type="number" id="param-q" min="0.01" max="0.99" step="0.01" required></label>
+          <label>Margen de error (d)<input type="number" id="param-d" min="0.001" max="0.999" step="0.001" required></label>
+          <label>Umbral de censo<input type="number" id="param-umbral" min="0" step="1" required></label>
+        </div>
+      </details>
+      <section class="panel">
+        <button id="btn-analizar" class="btn btn-primary btn-large" disabled>Calcular muestra</button>
+        <div id="analizar-status" class="status-line" role="status" aria-live="polite">Preparando el territorio del caso…</div>
+        <button id="btn-survey-retry" class="btn" type="button" hidden>Reintentar carga del territorio</button>
+      </section>
+      <section class="panel" id="panel-resultados" hidden>
+        <h2>Tu resultado</h2>
+        <div class="result-summary" id="result-summary"></div>
+        <div class="distribution-intro">
+          <p><strong>¿Cuántas encuestas corresponden a cada manzana?</strong><br>Revisa el reparto proporcional y las zonas con más encuestas por realizar.</p>
+          <button id="btn-survey-distribution" class="btn" type="button" aria-haspopup="dialog" aria-controls="distribution-dialog" disabled>Ver distribución en el mapa</button>
+        </div>
+        <h3 id="titulo-tabla-manzanas">Manzanas consideradas</h3>
+        <div class="table-scroll" id="wrap-tabla-manzanas"><table id="tabla-manzanas"><thead><tr><th>Manzana</th><th>Sección</th><th>LN</th><th>% afectado</th><th>LN ponderada</th></tr></thead><tbody></tbody></table></div>
+        <div class="table-scroll hidden" id="wrap-tabla-secciones"><h3>Secciones consideradas</h3><table id="tabla-secciones"><thead><tr><th>Sección</th><th>LN</th><th>% afectado</th><th>LN ponderada</th></tr></thead><tbody></tbody></table></div>
+        <h3>Localidades consideradas</h3>
+        <div class="table-scroll"><table id="tabla-localidades"><thead><tr><th>Localidad</th><th>Sección</th><th>LN</th></tr></thead><tbody></tbody></table></div>
+        <p class="hint">LN significa lista nominal. La población ponderada considera la proporción de cada zona incluida en el cálculo.</p>
+        <button id="btn-exportar" class="btn">Descargar resultados en Excel</button>
+      </section>
+    </aside>
+    <main class="map-wrap" aria-label="Mapa de la propuesta y del área considerada">
+      <div id="map" aria-label="Mapa del territorio"></div>
+      <div id="map-error" class="map-error" role="alert" hidden></div>
+      <div class="map-caption"><span class="map-live-dot"></span> TU PROPUESTA <span>Territorio considerado en la muestra</span></div>
+      <div class="legend">
+        <div><span class="swatch swatch-original"></span>Límite original</div>
+        <div><span class="swatch swatch-editable"></span>Límite propuesto</div>
+        <div><span class="swatch swatch-affected"></span>Área para calcular la muestra</div>
+        <div><span class="swatch swatch-manzana"></span>Manzanas o secciones consideradas</div>
+        <div><span class="swatch swatch-localidad"></span>Localidades consideradas</div>
+      </div>
+    </main>
+  </div>
+  <div id="survey-stage-footer" class="survey-stage-footer">
+    <p><strong>Siguiente: revisa y confirma</strong><span>Comprueba los límites y la muestra antes de guardar tu propuesta.</span></p>
+    <button type="button" id="btn-continuar-etapa2" disabled>Revisar mi propuesta →</button>
+  </div>
+  <footer class="app-footer" id="log-footer" role="status">Preparando…</footer>
+  <dialog id="distribution-dialog" class="distribution-dialog" aria-labelledby="distribution-title" aria-describedby="distribution-method">
+    <header class="distribution-header">
+      <div><span class="survey-eyebrow">PASO 2 · DISTRIBUCIÓN DE ENCUESTAS</span><h2 id="distribution-title" tabindex="-1">Tu muestra, manzana por manzana</h2><p id="distribution-method">El reparto utiliza la lista nominal de la parte afectada y conserva el total de encuestas calculado.</p></div>
+      <button id="distribution-close" class="distribution-close" type="button" aria-label="Cerrar distribución">×</button>
+    </header>
+    <div id="distribution-status" class="distribution-status" role="status" aria-live="polite"></div>
+    <div class="distribution-toolbar">
+      <label><input id="distribution-labels" type="checkbox" checked>Manzana y número de encuestas</label>
+      <label><input id="distribution-heat" type="checkbox" checked>Mapa de calor</label>
+      <button id="distribution-fit" class="btn" type="button" disabled>Ver toda el área</button>
+      <button id="distribution-download" class="btn" type="button" disabled>Descargar reparto (CSV)</button>
+    </div>
+    <button id="distribution-retry" class="btn" type="button" hidden>Reintentar reparto</button>
+    <div id="distribution-content" class="distribution-content" hidden>
+      <div class="distribution-map-wrap">
+        <div id="distribution-map" role="region" aria-label="Mapa del área considerada y las encuestas asignadas"></div>
+        <div class="distribution-heat-key">
+          <strong>Encuestas por realizar</strong>
+          <span class="distribution-heat-ramp"></span>
+          <span class="distribution-heat-range"><span>Menor concentración</span><span>Mayor</span></span>
+          <span>Contorno morado: área considerada</span>
+          <div id="route-map-key" class="route-map-key" hidden>
+            <span class="route-key-kind"><span class="route-key-line" aria-hidden="true"></span><span id="route-map-kind">Recorrido por calles</span></span>
+            <span class="route-key-symbols">
+              <span class="route-key-start"><span class="route-key-start-icon" aria-hidden="true"></span>Inicio</span>
+              <span class="route-key-end"><span class="route-key-end-icon" aria-hidden="true"></span><span id="route-map-end">Fin</span></span>
+            </span>
+          </div>
+        </div>
+      </div>
+      <aside class="distribution-list" aria-label="Detalle del reparto y recorrido sugerido">
+        <div class="distribution-tabs" role="tablist" aria-label="Consulta el reparto o prepara un recorrido">
+          <button id="distribution-tab-data" type="button" role="tab" aria-selected="true" aria-controls="distribution-data-panel" tabindex="0">Reparto</button>
+          <button id="distribution-tab-route" type="button" role="tab" aria-selected="false" aria-controls="distribution-route-panel" tabindex="-1">Recorrido</button>
+        </div>
+        <section id="distribution-data-panel" class="distribution-data-panel" role="tabpanel" aria-labelledby="distribution-tab-data">
+          <h3 id="distribution-count">Manzanas consideradas</h3>
+          <p id="distribution-selected" role="status"></p>
+          <div class="distribution-table-scroll"><table><thead><tr><th scope="col">Zona</th><th scope="col">Sección</th><th scope="col">LN</th><th scope="col">LN considerada</th><th scope="col">Encuestas</th></tr></thead><tbody id="distribution-rows"></tbody><tfoot><tr><th colspan="4" scope="row">Total distribuido</th><td id="distribution-total">0</td></tr></tfoot></table></div>
+          <p>LN: lista nominal de la zona. La LN considerada corresponde a la parte dentro del área de cálculo.</p>
+        </section>
+        <section id="distribution-route-panel" class="distribution-route-panel" role="tabpanel" aria-labelledby="distribution-tab-route" hidden>
+          <h3>Organiza tu recorrido</h3>
+          <p>Ordena las zonas con encuestas asignadas para planear el trabajo de campo.</p>
+          <div id="route-playback" class="route-playback" role="group" aria-label="Vista previa del recorrido" hidden>
+            <label for="route-view">Vista del recorrido</label>
+            <select id="route-view"><option value="trail">Seguir recorrido</option><option value="overview">Ver ruta completa</option></select>
+            <div class="route-progress-heading"><label for="route-progress">Posición en la vista previa</label><output id="route-progress-label" for="route-progress" aria-live="off">0 %</output></div>
+            <input id="route-progress" type="range" min="0" max="1000" step="1" value="0" aria-valuetext="0 %" disabled>
+            <div class="route-playback-actions">
+              <button id="route-motion" class="btn route-motion" type="button" aria-pressed="false" disabled>Reproducir</button>
+              <button id="route-restart" class="btn" type="button" disabled>Reiniciar</button>
+              <button id="route-focus" class="btn" type="button" disabled>Centrar flecha</button>
+            </div>
+            <p>Vista previa del recorrido; no representa avance real en campo.</p>
+          </div>
+          <div class="route-controls">
+            <label for="route-start">Punto de inicio</label>
+            <select id="route-start"><option value="auto">Sugerir punto de inicio</option></select>
+            <label for="route-strategy">Prioridad del recorrido</label>
+            <select id="route-strategy"><option value="short">Menos traslados</option><option value="workload">Más encuestas primero</option></select>
+            <label for="route-mode">Forma de traslado</label>
+            <select id="route-mode"><option value="walking">A pie</option><option value="driving">En vehículo</option></select>
+            <label class="checkbox-row"><input id="route-roundtrip" type="checkbox"><span>Volver al punto de inicio</span></label>
+            <button id="route-generate" class="btn btn-primary" type="button" disabled>Proponer recorrido</button>
+          </div>
+          <p id="route-status" class="route-status" role="status" aria-live="polite">Calcula la distribución para preparar un recorrido.</p>
+          <div id="route-summary" class="route-summary" hidden></div>
+          <ul id="route-warnings" class="route-warnings" hidden></ul>
+          <ol id="route-stops" class="route-stops" aria-label="Orden de visita sugerido"></ol>
+          <div id="route-links" class="route-links"></div>
+          <div class="route-actions">
+            <button id="route-clear" class="btn" type="button" disabled>Quitar ruta</button>
+            <button id="route-download" class="btn" type="button" disabled>Descargar recorrido CSV</button>
+          </div>
+          <p class="route-note">Los puntos representan manzanas o localidades, no domicilios. El recorrido es una sugerencia: confirma los accesos en campo; puede haber otras rutas más cortas.</p>
+        </section>
+      </aside>
+    </div>
+    <footer class="distribution-footer">Reparto orientativo en números enteros: las encuestas restantes por redondeo se asignan a las cuotas con mayor fracción pendiente. Una manzana puede recibir 0 si la muestra es pequeña. El calor muestra la concentración de encuestas.</footer>
+  </dialog>
+  <script src="js/map-labels.js?v=20261008-distribution-1"></script>
+  <script src="js/config.js?v=20261007-labels-1"></script>
+  <script src="js/workflow.js?v=20261007-labels-1"></script>
+  <script src="js/survey-page.js?v=20261007-labels-1"></script>
+  <script src="js/api.js?v=20261007-labels-1"></script>
+  <script src="js/sampling.js?v=20261007-labels-1"></script>
+  <script src="js/diff.js?v=20261007-labels-1"></script>
+  <script src="js/modeloEncuesta.js?v=20261007-labels-1"></script>
+  <script src="js/mapManager.js?v=20261007-info-decimals-1"></script>
+  <script src="js/survey-allocation.js?v=20261008-distribution-1"></script>
+  <script src="js/survey-heat.js?v=20261008-distribution-1"></script>
+  <script src="js/survey-route-plan.js?v=20261008-routes-1"></script>
+  <script src="js/survey-route-service.js?v=20261008-route-trail-1"></script>
+  <script src="js/survey-route-playback.js?v=20261008-route-trail-1"></script>
+  <script src="js/survey-routes.js?v=20261008-route-trail-1"></script>
+  <script src="js/survey-distribution.js?v=20261008-routes-1"></script>
+  <script src="js/app.js?v=20261008-distribution-1"></script>
+  <script src="js/maps-loader.js?v=20261007-labels-1"></script>
+</body>
+</html>

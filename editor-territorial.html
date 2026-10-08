@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Prepara tu propuesta · MGPC</title>
+  <link rel="stylesheet" href="css/shared.css?v=20261007-labels-1">
+  <link rel="stylesheet" href="css/territorial-shared.css?v=20261007-labels-1">
+  <link rel="stylesheet" href="css/editor-territorial.css?v=20261007-ut-border-1">
+  <link rel="stylesheet" href="css/editor-help.css?v=20261007-labels-1">
+  <script src="https://unpkg.com/@turf/turf@6.5.0/turf.min.js"></script>
+  <link rel="stylesheet" href="css/map-labels.css?v=20261008-distribution-1">
+</head>
+<body class="territorial-page">
+<a class="skip-link" href="#editor-controls">Ir a los controles del editor</a>
+
+<!-- PÁGINA COMPLETA: EDITOR DE POLÍGONO -->
+<div id="page-poligono">
+  <div class="topbar">
+
+    <h1 class="topbar-title"><strong id="proposal-page-title">Prepara tu propuesta</strong> <span>· Distrito <span id="editor-distrito-label">—</span> · UT <span id="editor-ut-label">—</span></span></h1>
+    <div class="topbar-spacer"></div>
+    <button class="btn-logout" id="btn-volver-poligono">← Cambiar datos del caso</button>
+  </div>
+  <div class="editor-layout">
+    <div class="editor-map-wrap">
+      <div id="map-error" class="workflow-error map-error" role="alert" hidden></div>
+      <div id="editor-map-container"></div>
+      <details id="section-map-legend" class="section-map-legend" open hidden>
+        <summary>Simbología de las secciones</summary>
+        <div class="section-map-legend-content">
+          <ul class="section-map-legend-boundaries" aria-label="Límites de la UT">
+            <li><span class="section-key section-key-original" aria-hidden="true"></span>Límite actual de tu UT</li>
+            <li><span class="section-key section-key-proposed" aria-hidden="true"></span>Límite propuesto al hacer cambios</li>
+          </ul>
+          <p>Secciones respecto a tu UT actual</p>
+          <ul aria-label="Estado de las secciones">
+            <li><span class="section-key section-key-inside" aria-hidden="true"></span>Dentro</li>
+            <li><span class="section-key section-key-outside" aria-hidden="true"></span>Fuera</li>
+            <li><span class="section-key section-key-partial" aria-hidden="true"></span>Una parte dentro</li>
+            <li><span class="section-key section-key-include" aria-hidden="true"></span>Elegida para incluir</li>
+            <li><span class="section-key section-key-exclude" aria-hidden="true"></span>Elegida para quitar</li>
+          </ul>
+        </div>
+      </details>
+    </div>
+    <aside class="editor-sidebar" id="editor-controls" aria-label="Información y capas territoriales">
+      <section class="proposal-guide editor-case">
+        <div class="section-label">Paso 1 de 3 · Prepara los límites</div>
+        <h2 id="editor-case-label"></h2>
+        <p id="editor-survey-summary" class="stage-description"></p>
+        <ol><li id="proposal-step-one">Prepara los nuevos límites</li><li>Revisa en el mapa cómo queda tu propuesta.</li><li>Continúa para calcular cuántas encuestas se necesitan.</li></ol>
+        <div id="editor-geometry-source" role="status"></div>
+        <button id="btn-editor-help" class="btn btn-secondary editor-help-trigger" type="button" aria-haspopup="dialog" aria-controls="editor-help-dialog" hidden>Cómo editar los límites</button>
+        <div class="editor-snap-controls" id="editor-snap-controls">
+          <label class="layer-toggle"><input type="checkbox" id="chk-editor-snap" checked> Ajustar puntos a límites cercanos</label>
+          <label class="snap-distance" for="editor-snap-distance">Distancia máxima
+            <select id="editor-snap-distance"><option value="1">1 metro</option><option value="3">3 metros</option><option value="5" selected>5 metros</option><option value="10">10 metros</option></select>
+          </label>
+          <p class="metadata-note">Al soltar un punto se acerca a una esquina o borde visible. Activa UT, secciones o manzanas en las capas del mapa para usarlas como referencia.</p>
+          <p id="editor-snap-status" class="snap-status" role="status" aria-live="polite">Activado. El límite original ya está disponible como referencia.</p>
+        </div>
+        <p id="proposal-error" class="workflow-error" role="alert" hidden></p>
+        <button id="btn-proposal-retry" class="btn btn-secondary" type="button" hidden>Reintentar carga</button>
+      </section>
+      <section class="proposal-choices" id="proposal-choices" hidden aria-labelledby="proposal-choice-title">
+        <h2 id="proposal-choice-title">Elige las zonas</h2>
+        <p id="proposal-choice-description" class="metadata-note"></p>
+        <p id="proposal-choice-status" role="status" aria-live="polite"></p>
+        <div id="proposal-choice-list" class="proposal-choices-list"></div>
+      </section>
+      <details class="proposal-options" id="territorial-reference-options"><summary>Información del territorio y capas del mapa</summary>
+      <p id="primary-reference-note" class="primary-reference-note" hidden></p>
+      <!-- INFORMACIÓN DE LA UT -->
+      <div class="panel-section">
+        <div class="section-label">Información de la UT</div>
+        <div class="ut-info">
+          <div class="ut-stat"><span class="ut-stat-val" id="ut-info-cve">—</span><span class="ut-stat-lbl">Clave UT</span></div>
+          <div class="ut-stat"><span class="ut-stat-val" id="ut-info-distrito">—</span><span class="ut-stat-lbl">Distrito</span></div>
+          <div class="ut-stat" style="grid-column:1/-1"><span class="ut-stat-val" id="ut-info-nombre">—</span><span class="ut-stat-lbl">Nombre</span></div>
+          <div class="ut-stat"><span class="ut-stat-val" id="ut-info-area">—</span><span class="ut-stat-lbl">Área</span></div>
+          <div class="ut-stat"><span class="ut-stat-val" id="secc-total-secciones">—</span><span class="ut-stat-lbl">Secciones</span></div>
+        </div>
+        <div style="margin-top:12px">
+          <div style="font-size:12px;font-weight:600;color:#000">Completas (<span id="secc-total-completas">—</span>)</div>
+          <div id="secciones-completas-lista" style="display:flex;flex-wrap:wrap;gap:6px;padding:6px 0 4px"></div>
+        </div>
+        <div style="margin-top:8px;padding-top:8px;border-top:1px dashed #e5e5e5">
+          <div style="font-size:12px;font-weight:600;color:#000">Parciales (<span id="secc-total-parciales">—</span>)</div>
+          <div id="secciones-parciales-lista" style="display:flex;flex-wrap:wrap;gap:6px;padding:6px 0 4px"></div>
+        </div>
+      </div>
+      <div class="panel-section" style="border-top:1px solid var(--border);padding-top:12px;margin-top:4px">
+        <div class="section-label" style="margin-bottom:8px">Colindancias (buffer 20 m)</div>
+
+        <div style="padding-top:4px">
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:12px;font-weight:600;color:#000">
+            <input type="checkbox" id="chk-colindancias-ut" style="width:16px;height:16px;cursor:pointer">
+            <span style="display:inline-block;width:10px;height:10px;border-radius:2px;border:3px solid #7B2CBF;background:rgba(123,44,191,.08);vertical-align:-1px"></span>
+            Unidades Territoriales (<span id="colindancias-ut-count">—</span>)
+          </label>
+          <div id="colindancias-ut-lista" style="display:flex;flex-wrap:wrap;gap:6px;padding:6px 0 4px 24px"></div>
+        </div>
+
+        <div style="margin-top:8px;padding-top:8px;border-top:1px dashed #e5e5e5">
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:12px;font-weight:600;color:#000">
+            <input type="checkbox" id="chk-colindancias-secciones" style="width:16px;height:16px;cursor:pointer">
+            <span style="display:inline-block;width:10px;height:10px;border-radius:2px;border:2px solid #2563EB;background:rgba(37,99,235,.08);vertical-align:-1px"></span>
+            Secciones (<span id="colindancias-secc-count">—</span>)
+          </label>
+          <div id="colindancias-secciones-lista" style="display:flex;flex-wrap:wrap;gap:6px;padding:6px 0 4px 24px"></div>
+        </div>
+      </div>
+      <div class="panel-section">
+        <div class="section-label">Manzanas electorales</div>
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:12px;font-weight:600;color:#000">
+          <input type="checkbox" id="chk-manzanas" style="width:16px;height:16px;cursor:pointer">
+          <span style="display:inline-block;width:10px;height:10px;border-radius:2px;border:2px solid #0891B2;background:rgba(8,145,178,.10);vertical-align:-1px"></span>
+          Manzanas (<span id="manzanas-count">—</span>)
+        </label>
+        <div style="font-size:12px;color:#000;padding:6px 0 0 24px">
+          Completas: <b id="manzanas-completas">—</b> · Parciales: <b id="manzanas-parciales">—</b> · Colindantes: <b id="manzanas-colindantes">—</b>
+        </div>
+        <div id="manzanas-lista" style="display:flex;flex-wrap:wrap;gap:6px;padding:6px 0 4px 24px"></div>
+      </div>
+      </details>
+    </aside>
+  </div>
+  <div class="editor-actions">
+    <div class="editor-metrics">
+      <div>Puntos del límite: <span id="editor-vertices-count" style="font-weight:700">0</span></div>
+      <div>Área: <span id="editor-area-value" style="font-weight:700">—</span></div>
+      <div>Cambios: <span id="editor-cambios-status" style="font-weight:700">No</span></div>
+    </div>
+    <div class="editor-buttons">
+      <button class="btn btn-secondary" id="btn-editor-modo">Mover puntos</button>
+      <button class="btn btn-secondary" id="btn-editor-revert" title="Deshacer el último movimiento" style="padding:8px 16px;margin:0">↩ Deshacer</button>
+      <button class="btn btn-primary" id="btn-editor-save" disabled>Usar estos límites y calcular muestra →</button>
+      <button class="btn btn-ghost" id="btn-editor-export">Descargar límites</button>
+      <button class="btn btn-ghost" id="btn-editor-restore">Volver al límite original</button>
+    </div>
+  </div>
+<div class="statusbar"><div class="status-dot" id="editor-status-dot"></div><span id="editor-status-text">Cargando…</span><div style="flex:1"></div></div>
+</div>
+
+<div class="toast-container" id="toast-container"></div>
+
+<dialog id="editor-help-dialog" class="editor-help-dialog" aria-labelledby="editor-help-title" aria-describedby="editor-help-intro">
+  <div class="editor-help-header">
+    <div>
+      <p class="section-label">Antes de empezar · Paso 1</p>
+      <h2 id="editor-help-title" tabindex="-1">Prepara tus límites, punto por punto</h2>
+    </div>
+    <button id="btn-editor-help-close" class="editor-help-close" type="button" aria-label="Cerrar guía de edición">×</button>
+  </div>
+  <p id="editor-help-intro">Cuando cargue el mapa, podrás editar el límite verde de tu propuesta. Acércate con el zoom para distinguir sus puntos. El límite morado te sirve como referencia.</p>
+  <ol class="editor-help-steps">
+    <li>
+      <svg viewBox="0 0 160 66" aria-hidden="true" focusable="false"><path d="M18 50 65 38 142 50" class="help-reference"/><path d="M18 50 85 16 142 50" class="help-boundary"/><path d="m65 36 17-17m-12 2 12-2-2 12" class="help-arrow"/><rect x="13" y="45" width="10" height="10"/><rect x="80" y="11" width="10" height="10"/><rect x="137" y="45" width="10" height="10"/></svg>
+      <h3>1. Mueve un punto</h3>
+      <p>Arrastra un <strong>cuadrito del límite verde</strong> hasta su nueva posición y suéltalo. Si no aparecen los puntos, pulsa <strong>Mover puntos</strong>.</p>
+    </li>
+    <li>
+      <svg viewBox="0 0 160 66" aria-hidden="true" focusable="false"><path d="M18 47H142" class="help-reference"/><path d="M18 47 80 16 142 47" class="help-boundary"/><rect x="13" y="42" width="10" height="10"/><rect x="137" y="42" width="10" height="10"/><rect x="76" y="43" width="8" height="8" class="help-midpoint"/><rect x="75" y="11" width="10" height="10"/><path d="M80 37V26m-5 5 5-5 5 5" class="help-arrow"/></svg>
+      <h3>2. Agrega un punto</h3>
+      <p>Busca el <strong>cuadrito más tenue a mitad de un tramo</strong>. Arrástralo: se convierte en un punto nuevo para dar más detalle al límite.</p>
+    </li>
+    <li>
+      <svg viewBox="0 0 160 66" aria-hidden="true" focusable="false"><path d="M18 47 80 16 142 47" class="help-reference"/><path d="M18 47H142" class="help-boundary"/><rect x="13" y="42" width="10" height="10"/><rect x="137" y="42" width="10" height="10"/><rect x="75" y="11" width="10" height="10"/><path d="m94 8 10 10m0-10-10 10" class="help-delete"/></svg>
+      <h3>3. Quita un punto</h3>
+      <p>Haz <strong>clic derecho sobre el cuadrito</strong> que quieras quitar. El sistema une sus dos vecinos. Cada zona debe conservar al menos tres puntos.</p>
+    </li>
+    <li>
+      <svg viewBox="0 0 160 66" aria-hidden="true" focusable="false"><path d="M21 12 106 12 139 52" class="help-reference help-snap-reference"/><path d="M21 53 106 12" class="help-boundary"/><rect x="16" y="48" width="10" height="10"/><rect x="76" y="25" width="10" height="10" class="help-midpoint"/><rect x="101" y="7" width="10" height="10"/><circle cx="106" cy="12" r="10" class="help-snap-target"/></svg>
+      <h3>4. Apóyate en el ajuste automático</h3>
+      <p>Al soltar un punto cerca de una <strong>esquina o borde de referencia visible</strong>, el ajuste automático (autosnapping) lo alinea. Empieza con 5 metros; puedes cambiar la distancia o desactivarlo.</p>
+    </li>
+  </ol>
+  <p class="editor-help-tip"><strong>Activa tus referencias:</strong> abre «Información del territorio y capas del mapa» y marca UT, secciones o manzanas. El límite original ya está disponible para el ajuste. Revisa siempre dónde quedó cada punto.</p>
+  <div class="editor-help-footer">
+    <p>Usa <strong>Deshacer</strong> si te equivocas. Cuando estés conforme, pulsa <strong>Usar estos límites y calcular muestra</strong>.</p>
+    <button id="btn-editor-help-start" class="btn btn-primary" type="button">Entendido, ir al mapa</button>
+  </div>
+</dialog>
+
+<script src="js/map-labels.js?v=20261008-distribution-1"></script>
+<script src="js/config.js?v=20261007-labels-1"></script>
+<script src="js/workflow.js?v=20261007-labels-1"></script>
+<script src="js/api.js?v=20261007-labels-1"></script>
+<script src="js/proposal-choices.js?v=20261007-reference-defaults-1"></script>
+<script src="js/snapping.js?v=20261007-labels-1"></script>
+<script src="js/editor-territorial.js?v=20261007-ut-border-1"></script>
+<script src="js/editor-help.js?v=20261007-labels-1"></script>
+<script src="js/maps-loader.js?v=20261007-labels-1"></script>
+</body>
+</html>
