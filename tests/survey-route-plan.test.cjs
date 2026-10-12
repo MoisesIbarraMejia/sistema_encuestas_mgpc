@@ -149,3 +149,13 @@ test('empty and single-stop plans need no navigation segments; two stops need no
   assert.equal(result.length, 1);
   assert.equal(new URL(result[0].url).searchParams.has('waypoints'), false);
 });
+
+test('Maps links follow the accepted road references instead of returning to the block centroids', () => {
+  const stops=line(3).map((stop,index)=>({...stop,routePosition:{lat:19+index/1000,lng:-99}}));
+  const parsed=new URL(links(stops)[0].url);
+  assert.equal(parsed.searchParams.get('origin'),'19,-99');
+  assert.equal(parsed.searchParams.get('waypoints'),'19.001,-99');
+  assert.equal(parsed.searchParams.get('destination'),'19.002,-99');
+  stops[1].routePosition.lat=NaN;
+  assert.throws(()=>links(stops),/referencia vial/);
+});

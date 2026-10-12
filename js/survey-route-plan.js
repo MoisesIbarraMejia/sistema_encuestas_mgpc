@@ -162,7 +162,11 @@
     const visits = stops.map((row, index) => ({ ...row, order: index + 1 }));
     if (options.roundTrip === true) visits.push(visits[0]);
     const links = [];
-    const coordinate = row => row.position.lat + ',' + row.position.lng;
+    const coordinate = row => {
+      const point=row.routePosition||row.position;
+      if(!Number.isFinite(point.lat)||!Number.isFinite(point.lng)||Math.abs(point.lat)>90||Math.abs(point.lng)>180)throw new RangeError('Una referencia vial no tiene coordenadas válidas.');
+      return point.lat+','+point.lng;
+    };
     // Maps URLs supports only three intermediate waypoints on mobile browsers.
     // Carry the preceding destination into the next origin; no stop is omitted.
     for (let offset = 0; offset < visits.length - 1; offset += 4) {

@@ -592,12 +592,22 @@ async function routeRuntime(setup) {
   return data;
 }
 
+function streetResult(stops,{roundTrip=false}={}) {
+  const ordered=roundTrip?[...stops,stops[0]]:stops;
+  const legs=ordered.slice(1).map((to,index)=>({fromKey:ordered[index].key,toKey:to.key,
+    path:[ordered[index].routePosition||ordered[index].position,to.routePosition||to.position],
+    startLocation:ordered[index].routePosition||ordered[index].position,endLocation:to.routePosition||to.position,
+    distanceMeters:100+index*50,durationSeconds:60+index*30}));
+  return {legs,segments:[{path:ordered.map(stop=>stop.routePosition||stop.position)}],
+    distanceMeters:legs.reduce((sum,leg)=>sum+leg.distanceMeters,0),durationSeconds:legs.reduce((sum,leg)=>sum+leg.durationSeconds,0),warnings:[]};
+}
+
 test('routes visit only assigned blocks, keep street metrics separate and release lines when options change',{skip:!hasTurf},async()=>{
   const {r,snapshot}=await routeRuntime();
   let received;
   r.context.MGPCSurveyRouteService={compute:async(stops,options)=>{
     received={stops,options};
-    return {segments:[{path:stops.map(stop=>stop.position)}],distanceMeters:900,durationSeconds:720,warnings:['Aviso peatonal del proveedor']};
+    return {...streetResult(stops,options),distanceMeters:900,durationSeconds:720,warnings:['Aviso peatonal del proveedor']};
   }};
   assert.equal(r.ids.get('distribution-data-panel').hidden,true);
   assert.equal(r.ids.get('distribution-route-panel').hidden,false);
@@ -608,6 +618,7 @@ test('routes visit only assigned blocks, keep street metrics separate and releas
   const originalSnapshot=JSON.stringify(snapshot);
   await r.ids.get('route-generate').click();
   assert.equal(received.options.travelMode,'WALKING');
+  assert.equal(received.options.improve,true);
   assert.equal(received.options.roundTrip,true);
   assert.equal(received.stops[0].key,'block:100:2');
   assert.equal(received.stops.length,3);
@@ -619,17 +630,16 @@ test('routes visit only assigned blocks, keep street metrics separate and releas
   assert.equal(r.ids.get('route-warnings').hidden,false);
   assert.equal(r.ids.get('route-download').disabled,false);
   const activeLines=r.context.google.polylines.filter(line=>line.map);
-  assert.equal(activeLines.length,3);
-  const halo=activeLines.find(line=>line.options.zIndex===45),trail=activeLines.find(line=>line.options.zIndex===46);
-  assert.equal(halo.options.strokeColor,'#ffffff');
-  assert.equal(trail.options.strokeColor,'#087f8c');
-  assert.ok(halo.options.strokeWeight>trail.options.strokeWeight);
-  assert.equal(activeLines.find(line=>line.options.zIndex===40).options.icons.length,1,'return trips share their start and finish');
-  assert.equal(r.context.google.polylines.filter(line=>line.map&&line.options.zIndex===31).length,0,'complete paths are hidden by default');
-  assert.equal(r.ids.get('route-playback').hidden,false);
+  assert.equal(activeLines.length,2,'one static leg with its white casing');
+  assert.equal(activeLines[0].options.strokeColor,'#fff');
+  assert.equal(activeLines[1].options.strokeColor,'#087f8c');
+  assert.ok(activeLines[0].options.strokeWeight>activeLines[1].options.strokeWeight);
+  assert.equal(r.context.google.polylines.filter(line=>line.map&&line.options.zIndex===30).length,0,'full paths stay hidden by default');
+  assert.equal(r.ids.get('route-inspector').hidden,false);
+  assert.equal(r.ids.get('route-leg-counter').textContent,'Tramo 1 de 3');
   assert.equal(r.ids.get('route-map-key').hidden,false);
-  assert.equal(r.ids.get('route-map-kind').textContent,'Recorrido por calles · vista previa');
-  assert.equal(r.ids.get('route-map-end').textContent,'Regreso al inicio');
+  assert.match(r.ids.get('route-map-kind').textContent,/de A a B/);
+  assert.equal(r.ids.get('route-map-end').textContent,'Llegada');
   const link=r.ids.get('route-links').children.find(child=>child.tagName==='A');
   assert.equal(new URL(link.href).searchParams.get('travelmode'),'walking');
   const input=r.ids.get('route-mode');input.value='driving';input.events.change.forEach(fn=>fn({target:input}));
@@ -655,7 +665,8 @@ test('route service failure keeps an explicit direct-line fallback and downloada
   assert.equal(r.context.google.polylines.filter(line=>line.map)[0].options.strokeOpacity,0);
   assert.equal(r.ids.get('route-map-key').classList.contains('is-direct'),true);
   assert.match(r.ids.get('route-map-kind').textContent,/sin calles/);
-  assert.equal(r.ids.get('route-motion').disabled,true,'orientation never pretends to be an animated street route');
+  assert.equal(r.ids.get('route-view').disabled,true);
+  assert.equal(r.ids.get('route-leg-select').disabled,true,'a street leg is never invented from an orientation line');
   await r.ids.get('route-download').click();
   const csv=await downloaded.text();
   assert.match(csv,/Distancia en línea directa/);
@@ -683,86 +694,77 @@ test('closing the modal discards late street routes and never restores cleared o
   assert.equal(r.ids.get('route-generate').disabled,false);
 });
 
-test('route motion can pause and resume, respects reduced motion and releases scheduled frames on close',{skip:!hasTurf},async()=>{
-  const frames=new Map(),reduced={matches:false};
-  let nextFrame=0,preferenceChanged,visibilityChanged;
-  const {r}=await routeRuntime(runtime=>{
-    runtime.context.requestAnimationFrame=callback=>{frames.set(++nextFrame,callback);return nextFrame;};
-    runtime.context.cancelAnimationFrame=id=>frames.delete(id);
-    reduced.addEventListener=(type,callback)=>{preferenceChanged=callback;};
-    runtime.context.matchMedia=()=>reduced;
-    runtime.document.addEventListener=(type,callback)=>{if(type==='visibilitychange')visibilityChanged=callback;};
-  });
-  const advance=time=>{const callbacks=[...frames.values()];frames.clear();callbacks.forEach(callback=>callback(time));};
-  advance(-100); // Finish the initial map-label layout before measuring route animation.
-  r.context.MGPCSurveyRouteService={compute:async stops=>({segments:[{path:stops.map(stop=>stop.position)}],distanceMeters:900,durationSeconds:720,warnings:[]})};
-  await r.ids.get('route-generate').click();
-  const motion=r.ids.get('route-motion');
-  assert.equal(motion['aria-pressed'],'true');
-  assert.equal(frames.size,1);
-  const line=r.context.google.polylines.find(item=>item.map&&item.options.zIndex===46);
-  const arrowLayer=r.context.google.layers.find(item=>item.map&&item.features.some(feature=>feature.getProperty('role')==='route-preview'));
-  assert.equal(arrowLayer.features.length,1,'exactly one arrow represents the current position');
-  const before=JSON.stringify(arrowLayer.features[0].geometry.position);
-  advance(0);advance(100);
-  assert.notEqual(JSON.stringify(arrowLayer.features[0].geometry.position),before);
-  assert.equal(line.options.icons,undefined,'the short trail carries no repeated arrows');
-  const endpointLine=r.context.google.polylines.find(item=>item.map&&item.options.zIndex===40);
-  assert.deepEqual(Array.from(endpointLine.options.icons,icon=>icon.offset),['0','100%'],'start and finish never move');
-  await motion.click();
-  assert.equal(frames.size,0);
-  assert.equal(motion['aria-pressed'],'false');
-  await motion.click();
-  assert.equal(frames.size,1);
-  r.document.hidden=true;visibilityChanged();assert.equal(frames.size,0);
-  r.document.hidden=false;visibilityChanged();assert.equal(frames.size,1);
-  reduced.matches=true;preferenceChanged();
-  assert.equal(frames.size,0);
-  assert.equal(motion.disabled,true);
-  reduced.matches=false;preferenceChanged();assert.equal(frames.size,1);
-  const pendingFrame=[...frames.keys()][0];
-  await r.ids.get('distribution-close').click();
-  assert.equal(frames.has(pendingFrame),false,'the route frame is cancelled, not merely ignored');
-  advance(1000); // Closing also schedules a final label cleanup.
-  assert.equal(frames.size,0);
-  assert.equal(motion.disabled,true);
-  assert.equal(r.ids.get('route-map-key').hidden,true);
-  assert.equal(r.ids.get('route-playback').hidden,true);
-  assert.equal(arrowLayer.map,null);
-});
-
-test('preview seeks manually and toggles overview without recalculating or connecting separate street segments',{skip:!hasTurf},async()=>{
+test('accepted street order is shared by the list, Maps links and CSV without changing survey allocations',{skip:!hasTurf},async()=>{
   const {r,snapshot}=await routeRuntime();
-  const originalSnapshot=JSON.stringify(snapshot);
-  let calls=0;
-  r.context.MGPCSurveyRouteService={compute:async()=>{
-    calls++;
-    return {segments:[{path:[{lat:19,lng:-99},{lat:19,lng:-98.999}]},{path:[{lat:20,lng:-98},{lat:20,lng:-97.999}]}],distanceMeters:210,durationSeconds:140,warnings:[]};
+  const before=JSON.stringify(snapshot);
+  let finalStops,downloaded;
+  r.context.URL=class extends URL {static createObjectURL(blob){downloaded=blob;return 'blob:ordered-route'}static revokeObjectURL(){}};
+  r.context.MGPCSurveyRouteService={compute:async(stops,options)=>{
+    options.onProgress('Comparando el orden por calles');
+    finalStops=[stops[0],stops[2],stops[1]].map((stop,index)=>({...stop,order:index+1,routePosition:{lat:19+index*.001,lng:-99}}));
+    return {stops:finalStops,segments:[{path:finalStops.map(stop=>stop.routePosition)}],distanceMeters:600,durationSeconds:420,warnings:[],optimization:{status:'improved',baselineDistanceMeters:900,savedMeters:300}};
   }};
   await r.ids.get('route-generate').click();
-  const slider=r.ids.get('route-progress');slider.value='750';slider.events.input.forEach(callback=>callback());
-  assert.equal(r.ids.get('route-progress-label').textContent,'75 %');
-  assert.match(slider['aria-valuetext'],/75 %/);
-  const trail=r.context.google.polylines.find(line=>line.map&&line.options.zIndex===46);
-  assert.ok(trail.options.path.every(point=>point.lat===20),'only the current segment is visible; no jump is drawn');
-  assert.equal(r.ids.get('route-motion')['aria-pressed'],'false');
-  const arrowLayer=r.context.google.layers.find(layer=>layer.map&&layer.features.some(feature=>feature.getProperty('role')==='route-preview'));
-  await r.ids.get('route-focus').click();
-  assert.deepEqual(arrowLayer.map.center,arrowLayer.features[0].geometry.position);
+  const names=r.ids.get('route-stops').children.map(item=>item.children[0].textContent);
+  finalStops.forEach((stop,index)=>assert.ok(names[index].startsWith('Manzana '+stop.name+' ·')));
+  assert.ok(r.ids.get('route-summary').children.some(item=>/300 m menos/.test(item.textContent)));
+  const link=r.ids.get('route-links').children.find(child=>child.tagName==='A');
+  const parsed=new URL(link.href);
+  assert.equal(parsed.searchParams.get('origin'),'19,-99');
+  assert.equal(parsed.searchParams.get('waypoints'),'19.001,-99');
+  assert.equal(parsed.searchParams.get('destination'),'19.002,-99');
+  await r.ids.get('route-download').click();
+  const lines=(await downloaded.text()).split('\r\n');
+  assert.ok(lines[2].includes('"'+finalStops[1].name+'"'));
+  assert.match(lines[2], /"19\.001","'?-99"$/);
+  assert.equal(JSON.stringify(snapshot),before);
+});
+
+test('static leg inspector changes the selected transfer and list selection without recalculating routes',{skip:!hasTurf},async()=>{
+  const {r,snapshot}=await routeRuntime();
+  const before=JSON.stringify(snapshot);let calls=0,stops;
+  r.context.MGPCSurveyRouteService={compute:async rows=>{calls++;stops=rows;return streetResult(rows);}};
+  await r.ids.get('route-generate').click();
+  assert.equal(r.ids.get('route-prev').disabled,true);assert.equal(r.ids.get('route-next').disabled,false);
+  const list=r.ids.get('route-stops');
+  assert.equal(list.children[1].children[0]['aria-current'],'step');
+  const active=r.context.google.polylines.find(line=>line.map&&line.options.zIndex===46);
+  assert.deepEqual(JSON.parse(JSON.stringify(active.options.path)),JSON.parse(JSON.stringify([stops[0].position,stops[1].position])));
+  assert.equal(active.options.icons.length,1);assert.equal(active.options.icons[0].repeat,undefined);
+  assert.match(r.ids.get('route-leg-metrics').textContent,/100 m.*1 min/);
+  await r.ids.get('route-next').click();
+  assert.equal(r.ids.get('route-leg-counter').textContent,'Tramo 2 de 2');
+  assert.equal(r.ids.get('route-next').disabled,true);assert.equal(r.ids.get('route-prev').disabled,false);
+  assert.equal(list.children[1].children[0]['aria-current'],undefined);
+  assert.equal(list.children[2].children[0]['aria-current'],'step');
+  assert.deepEqual(JSON.parse(JSON.stringify(active.options.path)),JSON.parse(JSON.stringify([stops[1].position,stops[2].position])));
+  assert.match(r.ids.get('route-leg-metrics').textContent,/150 m.*2 min/);
   const view=r.ids.get('route-view');view.value='overview';view.events.change.forEach(callback=>callback());
-  assert.equal(trail.map,null);assert.equal(arrowLayer.map,null);
-  const complete=r.context.google.polylines.filter(line=>line.map&&line.options.zIndex===31);
-  assert.equal(complete.length,2,'street segments are not concatenated');
-  assert.ok(complete.every(line=>line.options.icons.length===0));
-  assert.equal(slider.disabled,true);
-  view.value='trail';view.events.change.forEach(callback=>callback());
-  assert.ok(trail.map);assert.ok(arrowLayer.map);
-  assert.equal(complete.filter(line=>line.map).length,0);
-  assert.equal(slider.value,'750','switching views preserves progress');
-  slider.value='1000';slider.events.input.forEach(callback=>callback());
-  assert.equal(r.ids.get('route-motion').textContent,'Reproducir de nuevo');
-  await r.ids.get('route-restart').click();
-  assert.equal(slider.value,'0');
-  assert.equal(calls,1,'preview controls do not incur new route requests');
-  assert.equal(JSON.stringify(snapshot),originalSnapshot);
+  assert.equal(active.map,null);assert.equal(r.ids.get('route-leg-select').disabled,true);
+  assert.equal(r.context.google.polylines.filter(line=>line.map&&line.options.zIndex===30).length,1);
+  assert.equal(list.children[2].children[0]['aria-current'],undefined);
+  view.value='leg';view.events.change.forEach(callback=>callback());
+  assert.ok(active.map);assert.equal(r.ids.get('route-leg-counter').textContent,'Tramo 2 de 2');
+  await list.children[1].children[0].click();
+  assert.equal(r.ids.get('route-leg-counter').textContent,'Tramo 1 de 2');
+  assert.equal(calls,1);assert.equal(JSON.stringify(snapshot),before);
+  const pins=r.context.google.layers.find(layer=>layer.map&&layer.features.some(feature=>feature.getProperty('role')==='from'));
+  assert.deepEqual(Array.from(pins.features,feature=>feature.getProperty('label')),['A','B']);
+  await r.ids.get('distribution-close').click();
+  assert.equal(pins.map,null);assert.equal(active.map,null);assert.equal(r.ids.get('route-inspector').hidden,true);
+});
+
+test('a return leg shows no additional surveys and missing keyed detail remains an honest complete view',{skip:!hasTurf},async()=>{
+  const {r}=await routeRuntime();
+  r.context.MGPCSurveyRouteService={compute:async(stops,settings)=>streetResult(stops,settings)};
+  r.ids.get('route-roundtrip').checked=true;
+  await r.ids.get('route-generate').click();
+  const picker=r.ids.get('route-leg-select');picker.value='2';picker.events.change.forEach(callback=>callback());
+  assert.equal(r.ids.get('route-leg-counter').textContent,'Tramo 3 de 3');
+  assert.match(r.ids.get('route-leg-surveys').textContent,/sin encuestas adicionales/);
+  r.context.MGPCSurveyRouteService={compute:async stops=>({...streetResult(stops),legs:[]})};
+  await r.ids.get('route-generate').click();
+  assert.equal(r.ids.get('route-view').value,'overview');assert.equal(picker.disabled,true);
+  assert.match(r.ids.get('route-detail-note').textContent,/Solo.*vista general/);
+  assert.equal(r.context.google.polylines.filter(line=>line.map&&line.options.zIndex===46).length,0);
 });

@@ -166,3 +166,195 @@ test('modern numeric LatLngAltitude paths and classic LatLng accessors are norma
   assert.deepEqual(result.segments[0].path, [{ lat: 19.3, lng: -99.1 }, { lat: 19.301, lng: -99.1 }]);
   assert.ok(result.warnings.some(value => /alternativa/.test(value)));
 });
+
+const keyedPoints = count => points(count).map((position, index) => ({ key: `block-${index}`, position, count: index + 1 }));
+function withLegs(request, scale = 1) {
+  const response = route(request);
+  const path = response.routes[0].path;
+  response.routes[0].legs = path.slice(1).map((position, index) => ({
+    path: [path[index], position], startLocation: path[index], endLocation: position,
+    distanceMeters: 100 * scale, durationMillis: 60000 * scale
+  }));
+  response.routes[0].distanceMeters *= scale;
+  response.routes[0].durationMillis *= scale;
+  return response;
+}
+
+test('41 stops retain every keyed leg across chunks and the round-trip closure', async () => {
+  const { service, window, calls } = harness(request => withLegs(request));
+  let assessed = 0;
+  window.MGPCSurveyRouteOptimize = {
+    propose(stops, baseline) {
+      assert.equal(baseline.legs.length, 41);
+      return null;
+    }, accept: () => false,
+    assess: () => { assessed += 1; return { repeatMeters: 20, weightedArrival: 700 }; }
+  };
+  const stops = keyedPoints(41);
+  const snapshot = structuredClone(stops);
+  const result = plain(await service.compute(stops, { improve: true, roundTrip: true }));
+  assert.equal(calls.length, 2);
+  assert.ok(calls.every(call => call.fields.includes('legs') && call.intermediates.length <= 25 && call.optimizeWaypointOrder === false));
+  assert.equal(result.legs.length, 41);
+  assert.deepEqual(result.legs.map(leg => leg.fromKey), stops.map(stop => stop.key));
+  assert.deepEqual(result.legs.map(leg => leg.toKey), [...stops.slice(1).map(stop => stop.key), stops[0].key]);
+  assert.deepEqual(result.legs[26].startLocation, stops[26].position);
+  assert.deepEqual(result.legs[40].endLocation, stops[0].position);
+  assert.deepEqual(result.stops.map(stop => stop.order), Array.from({ length: 41 }, (_, index) => index + 1));
+  assert.deepEqual(stops, snapshot);
+  assert.equal(result.optimization.status, 'unavailable');
+  assert.equal(result.optimization.baselineRepeatMeters, 20);
+  assert.equal(result.optimization.weightedArrival, 700);
+  assert.equal(assessed, 2);
+});
+
+test('missing, incomplete or malformed leg details preserve the useful baseline without optimization', async () => {
+  for (const alter of [response => { delete response.routes[0].legs; },
+    response => response.routes[0].legs.pop(),
+    response => { response.routes[0].legs[0].path = []; }]) {
+    const { service, window, calls } = harness(request => {
+      const response = withLegs(request); alter(response); return response;
+    });
+    window.MGPCSurveyRouteOptimize = { propose: () => assert.fail('Incomplete legs must not reach optimizer'), accept: () => true };
+    const result = plain(await service.compute(keyedPoints(3), { improve: true }));
+    assert.equal(calls.length, 1);
+    assert.equal(result.distanceMeters, 200);
+    assert.equal(result.optimization.status, 'unavailable');
+    assert.equal(result.legsComplete, false);
+    assert.deepEqual(result.legs, []);
+    assert.match(result.warnings.join(' '), /Se conserva el recorrido/);
+  }
+});
+
+test('optional leg duration is nullable and missing locations use actual path endpoints', async () => {
+  const { service, window } = harness(request => {
+    const response = withLegs(request);
+    for (const leg of response.routes[0].legs) {
+      delete leg.durationMillis; delete leg.startLocation; delete leg.endLocation;
+    }
+    return response;
+  });
+  window.MGPCSurveyRouteOptimize = { propose: () => null, accept: () => false };
+  const result = plain(await service.compute(keyedPoints(2), { improve: true }));
+  assert.equal(result.legsComplete, true);
+  assert.equal(result.legs[0].durationSeconds, null);
+  assert.deepEqual(result.legs[0].startLocation, keyedPoints(2)[0].position);
+  assert.deepEqual(result.legs[0].endLocation, keyedPoints(2)[1].position);
+});
+
+test('accepted global candidate keeps original marker positions, keyed legs, new order and measured savings', async () => {
+  let requestCount = 0;
+  const { service, calls, window } = harness(request => withLegs(request, ++requestCount > 2 ? 0.8 : 1));
+  const stops = keyedPoints(41);
+  const candidate = [stops[0], ...stops.slice(1, -1).reverse(), stops[40]].map(stop => ({
+    ...stop, routePosition: { lat: stop.position.lat + 0.00001, lng: stop.position.lng }
+  }));
+  const progress = [];
+  window.MGPCSurveyRouteOptimize = {
+    propose: (_stops, _baseline, options) => { assert.equal(options.strategy, 'workload'); return candidate; },
+    accept: (_stops, baseline, nextStops, next) => {
+      assert.deepEqual(plain(next.legs.map(leg => leg.fromKey)), candidate.slice(0, -1).map(stop => stop.key));
+      assert.equal(next.distanceMeters < baseline.distanceMeters, true);
+      return true;
+    }
+  };
+  const result = plain(await service.compute(stops, { improve: true, strategy: 'workload', onProgress: value => progress.push(value) }));
+  assert.equal(calls.length, 4);
+  assert.equal(progress.length, 2);
+  assert.equal(result.optimization.status, 'improved');
+  assert.equal(result.optimization.savedMeters, 800);
+  assert.equal(result.optimization.baselineDistanceMeters, 4000);
+  assert.deepEqual(plain(calls[2].origin), candidate[0].routePosition);
+  assert.deepEqual(result.stops.map(stop => stop.key), candidate.map(stop => stop.key));
+  assert.deepEqual(result.stops[0].position, stops[0].position);
+  assert.deepEqual(result.stops.map(stop => stop.order), Array.from({ length: 41 }, (_, index) => index + 1));
+  assert.equal(stops.some(stop => 'routePosition' in stop || 'order' in stop), false);
+});
+
+test('unchanged candidates or invalid candidate identities make no extra request', async () => {
+  const stops = keyedPoints(3);
+  for (const proposed of [null, stops.map(stop => ({ ...stop })), [stops[0], stops[1], stops[1]], stops.slice(1)]) {
+    const { service, calls, window } = harness(request => withLegs(request));
+    window.MGPCSurveyRouteOptimize = { propose: () => proposed, accept: () => assert.fail('No candidate request expected') };
+    const result = await service.compute(stops, { improve: true });
+    assert.equal(calls.length, 1);
+    assert.equal(result.distanceMeters, 200);
+    assert.notEqual(result.optimization.status, 'improved');
+  }
+});
+
+test('same order with different street-access coordinates is recalculated, and rejection keeps baseline', async () => {
+  const stops = keyedPoints(3);
+  const { service, calls, window } = harness(request => withLegs(request));
+  window.MGPCSurveyRouteOptimize = {
+    propose: () => stops.map(stop => ({ ...stop, routePosition: { ...stop.position, lng: stop.position.lng + 0.001 } })),
+    accept: () => false
+  };
+  const result = plain(await service.compute(stops, { improve: true }));
+  assert.equal(calls.length, 2);
+  assert.notDeepEqual(plain(calls[0].origin), plain(calls[1].origin));
+  assert.equal(result.optimization.status, 'unchanged');
+  assert.equal(result.optimization.savedMeters, 0);
+  assert.equal('routePosition' in result.stops[0], false);
+});
+
+test('recording already-used street accesses without changing stop order does not recalculate', async () => {
+  const stops = keyedPoints(41);
+  const shift = point => ({ lat: point.lat + 0.00001, lng: point.lng });
+  const { service, calls, window } = harness(request => {
+    const response = withLegs(request);
+    response.routes[0].path = response.routes[0].path.map(shift);
+    for (const leg of response.routes[0].legs) {
+      leg.path = leg.path.map(shift);
+      leg.startLocation = shift(leg.startLocation);
+      leg.endLocation = shift(leg.endLocation);
+    }
+    return response;
+  });
+  window.MGPCSurveyRouteOptimize = {
+    propose: () => stops.map(stop => ({ ...stop, routePosition: shift(stop.position) })),
+    accept: () => assert.fail('Same traveled accesses do not require comparison')
+  };
+  const result = plain(await service.compute(stops, { improve: true }));
+  assert.equal(calls.length, 2);
+  assert.equal(result.optimization.status, 'unchanged');
+  assert.deepEqual(result.stops.map(stop => stop.routePosition), stops.map(stop => shift(stop.position)));
+  assert.deepEqual(result.stops.map(stop => stop.position), stops.map(stop => stop.position));
+});
+
+test('failed or denied optional candidates preserve baseline totals and all stops', async () => {
+  const stops = keyedPoints(41);
+  for (const errorMessage of ['network failure', 'PERMISSION_DENIED']) {
+    let requestCount = 0;
+    const { service, calls, window } = harness(request => {
+      if (++requestCount === 4) throw new Error(errorMessage);
+      return withLegs(request);
+    });
+    window.MGPCSurveyRouteOptimize = { propose: () => [stops[0], ...stops.slice(1).reverse()], accept: () => true };
+    const result = plain(await service.compute(stops, { improve: true }));
+    assert.equal(calls.length, 4);
+    assert.equal(result.distanceMeters, 4000);
+    assert.equal(result.legs.length, 40);
+    assert.deepEqual(result.stops.map(stop => stop.key), stops.map(stop => stop.key));
+    assert.equal(result.optimization.status, 'unavailable');
+    assert.match(result.warnings.join(' '), /Se conserva el recorrido/);
+  }
+});
+
+test('cancellation between baseline and candidate, or during candidate, propagates AbortError without extra chunks', async () => {
+  const stops = keyedPoints(41);
+  for (const cancelAt of ['propose', 'request']) {
+    let current = true;
+    let requestCount = 0;
+    const { service, calls, window } = harness(request => {
+      if (++requestCount === 3 && cancelAt === 'request') current = false;
+      return withLegs(request);
+    });
+    window.MGPCSurveyRouteOptimize = {
+      propose: () => { if (cancelAt === 'propose') current = false; return [stops[0], ...stops.slice(1).reverse()]; },
+      accept: () => true
+    };
+    await assert.rejects(service.compute(stops, { improve: true, isCurrent: () => current }), error => error.name === 'AbortError');
+    assert.equal(calls.length, cancelAt === 'propose' ? 2 : 3);
+  }
+});

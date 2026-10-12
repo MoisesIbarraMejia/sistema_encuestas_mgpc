@@ -90,6 +90,16 @@
     return { point: interpolate(points[index], points[index + 1], ratio), bearing: direction(points[index], points[index + 1]) };
   }
 
+  function slicePath(segment, start, end) {
+    const path = [locate(segment, start).point];
+    for (let i = upperBound(segment.distances, start); i < segment.points.length && segment.distances[i] < end; i += 1) {
+      path.push(copy(segment.points[i]));
+    }
+    const last = locate(segment, end).point;
+    if (!same(path[path.length - 1], last)) path.push(last);
+    return path;
+  }
+
   /**
    * progress is 0..1 of traveled meters; tailMeters defaults to 100.
    * Returns {path, head, progress, segmentIndex, bearing}; bearing is degrees
@@ -114,13 +124,35 @@
     const lastTurn = upperBound(segment.turnDistances, meters) - 1;
     if (lastTurn >= 0) start = Math.max(start, segment.turnDistances[lastTurn]);
     const current = locate(segment, meters);
-    const path = [locate(segment, start).point];
-    for (let i = upperBound(segment.distances, start); i < segment.points.length && segment.distances[i] < meters; i += 1) {
-      path.push(copy(segment.points[i]));
-    }
-    if (!same(path[path.length - 1], current.point)) path.push(copy(current.point));
+    const path = slicePath(segment, start, meters);
     return { path, head: current.point, progress, segmentIndex: segment.sourceIndex, bearing: current.bearing };
   }
 
-  global.MGPCSurveyRoutePlayback = Object.freeze({ prepare, frame });
+  /**
+   * Split the already clipped frame tail into equal traveled-distance bands.
+   * Bands run tail -> head, share only their adjacent endpoints along the path,
+   * and retain every corner. Opacity rises from .06 to .95; widthScale from .2
+   * to 1. A single band uses the head style. Empty or stationary tails have no
+   * bands, while the frame head and bearing remain available for the arrow.
+   */
+  function comet(prepared, progress, tailMeters = 100, bands = 8) {
+    if (!Number.isSafeInteger(bands) || bands < 1) throw new RangeError('La cantidad de bandas debe ser un entero positivo.');
+    const current = frame(prepared, progress, tailMeters);
+    if (current.path.length < 2) return { ...current, bands: [] };
+    // Measuring the clipped path preserves frame's turn and segment boundaries.
+    const segment = prepare([current.path]).segments[0];
+    if (!segment.lengthMeters) return { ...current, bands: [] };
+    const parts = [];
+    for (let i = 0; i < bands; i += 1) {
+      const ratio = bands === 1 ? 1 : i / (bands - 1);
+      parts.push({
+        path: slicePath(segment, segment.lengthMeters * i / bands, segment.lengthMeters * (i + 1) / bands),
+        opacity: i === bands - 1 ? .95 : .06 + .89 * ratio,
+        widthScale: i === bands - 1 ? 1 : .2 + .8 * ratio
+      });
+    }
+    return { ...current, bands: parts };
+  }
+
+  global.MGPCSurveyRoutePlayback = Object.freeze({ prepare, frame, comet });
 })(window);
