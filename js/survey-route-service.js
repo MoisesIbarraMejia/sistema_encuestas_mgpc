@@ -297,5 +297,48 @@
     }
   }
 
+  /**
+   * Punto de entrada. Cada traslado A→B sale de Google Routes (calles reales, un tramo por par de
+   * paradas). Con improve se compara una alternativa de orden calculada con los accesos viales; con
+   * optimizeWithGoogle se compara además el orden propio de Google (optimizeWaypointOrder) y se
+   * conserva el mejor según helper.accept. Una comparación opcional que falla nunca descarta un
+   * recorrido válido.
+   */
+  async function compute(stops, options = {}) {
+    const { improve = false, optimizeWithGoogle = false, strategy = 'short', roundTrip = false, isCurrent, onProgress } = options;
+    const route = await computeImproved(stops, options);
+    // Origen y destino quedan fijos: se necesitan al menos dos paradas intermedias para reordenar.
+    const intermediates = stops.length - (roundTrip ? 1 : 2);
+    if (!improve || !optimizeWithGoogle || intermediates < 2 || !route.legsComplete || !Array.isArray(route.stops)) return route;
+    const helper = global.MGPCSurveyRouteOptimize;
+    if (typeof helper?.accept !== 'function') return route;
+    try {
+      checkCurrent(isCurrent);
+      if (typeof onProgress === 'function') onProgress('Comparando también el orden sugerido por Google…');
+      const native = await computeOrdered(route.stops, { ...options, includeLegs: true, _optimizeWaypointOrder: true });
+      checkCurrent(isCurrent);
+      const nativeStops = native.stops;
+      if (!native.legsComplete || !sameIdentities(route.stops, nativeStops)) {
+        route.optimization = { ...route.optimization, nativeStatus: 'unavailable' };
+        return route;
+      }
+      if (helper.accept(route.stops, route, nativeStops, native, { strategy, roundTrip }) === true) {
+        native.optimization = {
+          ...route.optimization, status: 'improved', nativeStatus: 'improved',
+          savedMeters: Math.max(0, (route.optimization?.baselineDistanceMeters ?? route.distanceMeters) - native.distanceMeters)
+        };
+        native.warnings = uniqueWarnings([...route.warnings, ...native.warnings]);
+        return native;
+      }
+      route.optimization = { ...route.optimization, nativeStatus: 'unchanged' };
+      return route;
+    } catch (error) {
+      if (error?.name === 'AbortError') throw error;
+      checkCurrent(isCurrent);
+      route.optimization = { ...route.optimization, nativeStatus: 'unavailable' };
+      return route;
+    }
+  }
+
   global.MGPCSurveyRouteService = Object.freeze({ compute });
 })(window);

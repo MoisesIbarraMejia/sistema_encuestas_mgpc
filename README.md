@@ -46,7 +46,7 @@ El agrupador usa un [OverlayView de Google Maps](https://developers.google.com/m
 
 ## Distribución de encuestas por manzana
 
-En el **paso 2**, después de calcular o recuperar una muestra, «Ver distribución en el mapa» abre una ventana con el área considerada, tarjetas de **Manzana y Núm. de encuestas**, y una tabla navegable con sección y LN. Las tarjetas se agrupan cuando se superponen. El mapa de calor utiliza sus ubicaciones originales y el número asignado como peso, con opacidad limitada al 35%. Se pueden ocultar el calor o las tarjetas y descargar el reparto en CSV.
+En el **paso 2**, después de calcular o recuperar una muestra, «Ver distribución en el mapa» abre una ventana con el área considerada, tarjetas de **Manzana y Núm. de encuestas**, y una tabla navegable con sección y LN. Las tarjetas se agrupan cuando se superponen. El mapa de calor utiliza sus ubicaciones originales y el número asignado como peso, con opacidad limitada al 35%. Se pueden ocultar el calor o las tarjetas y descargar el reparto en CSV. Las tarjetas de manzana se muestran solo en la pestaña **Reparto**; en **Recorrido** se ocultan para dejar libre la ruta.
 
 La cuota ideal es `muestra × LN considerada / suma de LN considerada`. La LN considerada es la lista nominal multiplicada por la proporción de área afectada. Se asigna la parte entera de cada cuota y las encuestas restantes se entregan a las mayores fracciones, con desempate estable por clave. El total asignado conserva la muestra y ninguna fila supera el techo de su población considerada. Las localidades mantienen una cuota propia. En inclusión/exclusión de secciones se asignan primero las cuotas por sección y después se distribuye cada cuota entre sus manzanas.
 
@@ -56,7 +56,7 @@ Para casos que ya calculan sobre manzanas se reutilizan los resultados; para sec
 
 La pestaña **Recorrido** de esa ventana permite elegir inicio, prioridad («Menos traslados» o «Más encuestas primero»), traslado a pie/vehículo y regreso opcional. Visita exclusivamente las manzanas y localidades con encuestas asignadas, sin alterar cantidades. Las encuestas pendientes de asignar se señalan y aún no forman parte del recorrido. Las paradas ordenadas se pueden acercar en el mapa y descargar en CSV.
 
-El orden inicial usa distancias geográficas, vecino más cercano y mejoras 2-opt acotadas para reducir traslados; la alternativa de carga prioriza la llegada a zonas con más encuestas. Es una propuesta heurística, no una garantía del recorrido vial óptimo. La línea punteada representa ese orden entre puntos de referencia de manzanas; deben comprobarse los accesos a la vía pública.
+El orden inicial usa distancias geográficas, semillas de vecino más cercano y de árbol de expansión mínima (MST) con mejoras 2-opt y Or-opt acotadas para reducir traslados (ver [docs/ROUTE-NETWORK.md](docs/ROUTE-NETWORK.md)); la alternativa de carga prioriza la llegada a zonas con más encuestas. Es una propuesta heurística, no una garantía del recorrido vial óptimo. La línea punteada representa ese orden entre puntos de referencia de manzanas; deben comprobarse los accesos a la vía pública.
 
 Después se revisa el **recorrido real por calles**. Se toman los puntos ajustados a la vía por Google y se adelantan las visitas a manzanas junto a las que ya pasa el recorrido (tolerancia de 10 m). Esta revisión considera todas las paradas, incluso si la consulta se divide por superar 25 intermedios. Se vuelve a consultar la alternativa y se conserva únicamente si mejora sin aumentar la distancia ni los tramos repetidos estimados. Con «Más encuestas primero» también se comprueba la llegada ponderada por el número de encuestas. La lista, los enlaces a Google Maps y el CSV utilizan el orden finalmente aceptado; las asignaciones permanecen intactas. No se eliminan visitas para acortar la ruta. Los puntos ajustados por Google son referencias viales, no accesos domiciliarios confirmados; sentidos de circulación, calles sin salida o barreras pueden exigir pasar otra vez por una calle.
 
@@ -77,6 +77,7 @@ Al confirmar un caso con cambios territoriales se registra la propuesta en el hi
 | Archivo | Responsabilidad |
 | --- | --- |
 | `index.html`, `js/selection.js` | Distrito, UT y tipo de caso; catálogo y recuperación de sesión. |
+| `js/survey-route-graph.js` | Grafo de proximidad, MST, caminos mínimos y diámetro para el orden de visitas. |
 | `editor-territorial.html`, `js/editor-territorial.js` | Preparación de límites y herramientas del mapa. |
 | `js/editor-help.js`, `css/editor-help.css` | Guía inicial de edición y acceso para volver a consultarla. |
 | `js/map-labels.js`, `css/map-labels.css` | Etiquetas de todas las capas, ancho de UT y agrupación visual compartida. |

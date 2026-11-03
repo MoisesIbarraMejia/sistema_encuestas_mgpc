@@ -347,6 +347,7 @@ function drawingAPI() {
     constructor(options){this.options=options;this.map=options.map;polylines.push(this)}
     setMap(map){this.map=map}
     set(key,value){this.options[key]=value}
+    setPath(path){this.options.path=path}
   }
   return {layers,polylines,maps:{Map:MapView,OverlayView,Polygon,Polyline,Data,SymbolPath:{CIRCLE:'circle',FORWARD_CLOSED_ARROW:'arrow'},LatLng:class{constructor(lat,lng){this.lat=()=>lat;this.lng=()=>lng;}},LatLngBounds:class {constructor(){this.count=0;}extend(){this.count++;}isEmpty(){return !this.count;}},
     ControlPosition:{TOP_RIGHT:'TOP_RIGHT'},geometry:{spherical:{computeArea:()=>1000}},
@@ -767,4 +768,22 @@ test('a return leg shows no additional surveys and missing keyed detail remains 
   assert.equal(r.ids.get('route-view').value,'overview');assert.equal(picker.disabled,true);
   assert.match(r.ids.get('route-detail-note').textContent,/Solo.*vista general/);
   assert.equal(r.context.google.polylines.filter(line=>line.map&&line.options.zIndex===46).length,0);
+});
+
+test('block labels are hidden in the route tab and returned to the data tab respecting the toggle',{skip:!hasTurf},async()=>{
+  const {r,heat}=await routeRuntime();
+  const layers=r.context.MGPCMapLabels.forMap(heat[0].map);
+  assert.equal(layers.entries.size,0,'no block label may appear while planning the route');
+  assert.equal(r.ids.get('distribution-labels-field').hidden,true);
+  await r.ids.get('distribution-tab-data').click();
+  assert.ok(layers.entries.size>0);
+  assert.equal(r.ids.get('distribution-labels-field').hidden,false);
+  const toggle=r.ids.get('distribution-labels');toggle.checked=false;
+  toggle.events.change.forEach(callback=>callback({target:toggle}));
+  assert.equal(layers.entries.size,0);
+  await r.ids.get('distribution-tab-route').click();
+  await r.ids.get('distribution-tab-data').click();
+  assert.equal(layers.entries.size,0,'a label turned off by the person stays off');
+  toggle.checked=true;toggle.events.change.forEach(callback=>callback({target:toggle}));
+  assert.ok(layers.entries.size>0);
 });

@@ -11,7 +11,7 @@
     const safe=/^[\s\u0000-\u001f]*[=+@\-]|^[\t\r\n]/.test(text)?"'"+text:text;
     return '"'+safe.replace(/"/g,'""')+'"';
   }
-  function create({map,onSelect}) {
+  function create({map,onSelect,onTab=()=>{}}) {
     let rows=[], unassigned=0, route=null, road=null, version=0, utKey='';
     let selectedTab='data';
     let stopButtons=[];
@@ -31,6 +31,9 @@
         ui('distribution-'+id+'-panel').hidden=!active;
         if(active&&focus)button.focus();
       }
+      // Al salir de «Recorrido» se limpia la ruta (líneas, A/B, resumen) y se invalida cualquier consulta pendiente.
+      if(value==='data'&&(route||road))reset();
+      onTab(value);
     }
     for (const id of ['data','route']) {
       ui('distribution-tab-'+id).addEventListener('click',()=>tab(id));

@@ -159,3 +159,45 @@ test('Maps links follow the accepted road references instead of returning to the
   stops[1].routePosition.lat=NaN;
   assert.throws(()=>links(stops),/referencia vial/);
 });
+
+// --- Red de proximidad (survey-route-graph.js cargado junto al planificador) ---
+{
+  const fs=require('node:fs'),path=require('node:path'),vm=require('node:vm');
+  const networked=()=>{const window={};for(const f of ['survey-route-graph.js','survey-route-plan.js'])vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../js',f),'utf8'),{window});return window;};
+  const M=1/111195,at=(east,north)=>({lat:19.43+north*M,lng:-99.13+east*M/Math.cos(19.43*Math.PI/180)});
+  const stopAt=(key,east,north)=>({key,count:1,position:at(east,north)});
+  const plainValue=value=>JSON.parse(JSON.stringify(value));
+  const assert2=require('node:assert/strict'),test2=require('node:test');
+
+  test2('network-aware plan visits every stop once, keeps the origin and never beats the MST lower bound',()=>{
+    const {MGPCSurveyRoutePlan:Plan,MGPCSurveyRouteGraph:Graph}=networked();
+    const rows=Array.from({length:40},(_,i)=>stopAt('s'+String(i).padStart(2,'0'),(i*137)%900,(i*251)%700));
+    for(const roundTrip of [false,true]) {
+      const result=plainValue(Plan.plan(rows,{startKey:'s05',roundTrip}));
+      assert2.equal(result.stops.length,40);
+      assert2.equal(new Set(result.stops.map(stop=>stop.key)).size,40);
+      assert2.equal(result.stops[0].key,'s05');
+      assert2.ok(result.distanceMeters<=result.initialDistanceMeters+1e-6);
+      if(!roundTrip)assert2.ok(Graph.create(rows.map(row=>row.position)).mstWeight<=result.distanceMeters+1e-6);
+    }
+  });
+
+  test2('measured street distances replace straight lines when choosing the visit order',()=>{
+    const {MGPCSurveyRoutePlan:Plan}=networked();
+    // B está en línea recta entre A y C, pero llegar a B por calles cuesta 1000 m en cada sentido.
+    const rows=[stopAt('a',0,0),stopAt('b',100,0),stopAt('c',200,0)];
+    const straight=plainValue(Plan.plan(rows,{startKey:'a'}));
+    assert2.deepEqual(straight.stops.map(stop=>stop.key),['a','b','c']);
+    const measured=[{a:0,b:1,meters:1000},{a:1,b:2,meters:1000},{a:0,b:2,meters:150}];
+    const streets=plainValue(Plan.plan(rows,{startKey:'a',measured}));
+    assert2.deepEqual(streets.stops.map(stop=>stop.key),['a','c','b']);
+    // La distancia mostrada sigue siendo la recta entre puntos, no la medida.
+    assert2.ok(streets.distanceMeters<500);
+  });
+
+  test2('without the graph module the planner still works',()=>{
+    const window={};vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../js/survey-route-plan.js'),'utf8'),{window});
+    const result=plainValue(window.MGPCSurveyRoutePlan.plan([stopAt('a',0,0),stopAt('b',100,0),stopAt('c',50,10)],{startKey:'a'}));
+    assert2.equal(result.stops.length,3);
+  });
+}

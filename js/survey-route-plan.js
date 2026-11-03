@@ -100,6 +100,42 @@
     return route;
   }
 
+  // Or-opt: reubica tramos de 1 a 3 paradas (también invertidos). Corrige los saltos que 2-opt no ve.
+  function improveOrOpt(input, distance, roundTrip, budget) {
+    const route = [...input];
+    for (let pass = 0; pass < 6 && budget.left > 0; pass += 1) {
+      let changed = false;
+      for (let length = 1; length <= 3 && budget.left > 0; length += 1) {
+        for (let i = 1; i + length <= route.length && budget.left > 0; i += 1) {
+          const first = route[i], last = route[i + length - 1];
+          const before = route[i - 1], after = route[i + length] || (roundTrip ? route[0] : null);
+          const removed = distance(before, first) + (after ? distance(last, after) : 0) - (after ? distance(before, after) : 0);
+          const rest = route.slice(0, i).concat(route.slice(i + length));
+          let bestGain = EPSILON, bestAt = -1, bestReversed = false;
+          for (let at = 1; at <= rest.length && budget.left > 0; at += 1) {
+            budget.left -= 1;
+            if (at === i) continue;                                  // misma posición
+            const a = rest[at - 1], b = rest[at] || (roundTrip ? rest[0] : null);
+            const base = b ? distance(a, b) : 0;
+            const forward = distance(a, first) + (b ? distance(last, b) : 0) - base;
+            const backward = distance(a, last) + (b ? distance(first, b) : 0) - base;
+            const best = Math.min(forward, backward);
+            if (removed - best > bestGain) { bestGain = removed - best; bestAt = at; bestReversed = backward < forward; }
+          }
+          if (bestAt > 0) {
+            const piece = route.slice(i, i + length);
+            if (bestReversed) piece.reverse();
+            rest.splice(bestAt, 0, ...piece);
+            route.splice(0, route.length, ...rest);
+            changed = true;
+          }
+        }
+      }
+      if (!changed) break;
+    }
+    return route;
+  }
+
   function plan(input, options = {}) {
     const rows = validateRows(input).sort(compareKeys);
     const strategy = options.strategy ?? 'short';
@@ -125,27 +161,41 @@
       }
       return matrix[index];
     };
-    const starts = explicitStart ? [explicitStart] : startsAtBoundary(rows).slice(0, rows.length > 300 ? 4 : 8);
+    // Red de proximidad: MST (semillas y extremos del diámetro) y, si hay distancias medidas, su métrica.
+    const net = global.MGPCSurveyRouteGraph?.create(rows.map(row => row.position), { measured: options.measured });
+    const metric = net?.usesMeasured ? (a, b) => net.distance(indices.get(a), indices.get(b)) : distance;
+    const boundary = startsAtBoundary(rows);
+    const peripheral = net ? net.peripheral.map(index => rows[index]) : [];
+    const limit = rows.length > 300 ? 4 : 8;
+    const starts = explicitStart ? [explicitStart] : [...new Set([...boundary.slice(0, limit), ...peripheral])];
     const baseline = [starts[0], ...rows.filter(row => row !== starts[0])];
     const initialDistanceMeters = totalDistance(baseline, distance, roundTrip);
     const score = route => {
-      if (strategy === 'short') return totalDistance(route, distance, roundTrip);
+      if (strategy === 'short') return totalDistance(route, metric, roundTrip);
       let elapsed = 0, weightedArrival = 0;
       const totalCount = rows.reduce((sum, row) => sum + row.count, 0);
       for (let i = 1; i < route.length; i += 1) {
-        elapsed += distance(route[i - 1], route[i]);
+        elapsed += metric(route[i - 1], route[i]);
         weightedArrival += elapsed * (route[i].count / totalCount);
       }
       return weightedArrival;
     };
     let best = baseline, bestScore = score(baseline);
+    const budget = { left: 150000 };
     for (const start of starts) {
-      let candidate = nearestOrder(rows, start, distance, strategy);
-      if (strategy === 'short') candidate = improveShortRoute(candidate, distance, roundTrip);
-      const candidateScore = score(candidate);
-      if (candidateScore < bestScore - EPSILON) {
-        best = candidate;
-        bestScore = candidateScore;
+      const seeds = [nearestOrder(rows, start, metric, strategy)];
+      if (net && strategy === 'short') seeds.push(net.walk(indices.get(start)).map(index => rows[index]));
+      for (let candidate of seeds) {
+        if (strategy === 'short') {
+          candidate = improveShortRoute(candidate, metric, roundTrip);
+          candidate = improveOrOpt(candidate, metric, roundTrip, budget);
+          candidate = improveShortRoute(candidate, metric, roundTrip);
+        }
+        const candidateScore = score(candidate);
+        if (candidateScore < bestScore - EPSILON) {
+          best = candidate;
+          bestScore = candidateScore;
+        }
       }
     }
     return {

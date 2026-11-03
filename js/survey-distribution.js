@@ -5,7 +5,7 @@
   const clone = value => JSON.parse(JSON.stringify(value));
   const number = value => Number(value).toLocaleString('es-MX', {maximumFractionDigits:2});
   const sectionKey = value => /^\d+$/.test(String(value ?? '').trim()) ? String(Number(value)) : String(value ?? '').trim();
-  let snapshot=null, plan=null, map=null, heat=null, routes=null, version=0, mapObjects=[], labels=[], returnFocus=null;
+  let snapshot=null, plan=null, map=null, heat=null, routes=null, version=0, mapObjects=[], labels=[], returnFocus=null, activeTab='data';
 
   function nominal(properties) {
     const raw=properties?.LN ?? properties?.ln ?? properties?.Ln ?? properties?.lN;
@@ -123,6 +123,13 @@
     map.setZoom(Math.max(map.getZoom() || 16,18));
     ui('distribution-selected').textContent=(row.kind==='locality'?'Localidad: ':'Manzana: ')+row.name+' · Sección: '+row.section+' · LN: '+number(row.ln)+' · Núm. encuestas: '+number(row.count);
   }
+  // Las etiquetas de manzana solo se muestran en «Reparto»: en «Recorrido» ocultarlas deja ver la ruta.
+  function syncLabels() {
+    const inRoute=activeTab==='route';
+    const field=ui('distribution-labels-field');if(field)field.hidden=inRoute;
+    const show=!inRoute && ui('distribution-labels').checked;
+    labels.forEach(label=>label.setMap(show?map:null));
+  }
   function fitArea() {
     if (!map||!plan) return;
     const bounds=new google.maps.LatLngBounds();
@@ -145,12 +152,12 @@
     for (const row of plan.rows) {
       const handle=controller.add({layer:row.kind,key:row.key,text:row.name,position:row.position,variant:'results',
         details:[{label:'Núm. encuestas',value:number(row.count)}],onClick:()=>focusRow(row)});
-      if (!ui('distribution-labels').checked) handle.setMap(null);
       labels.push(handle);
     }
+    syncLabels();
     heat=MGPCSurveyHeat.create(map,plan.rows.map(row=>({position:row.position,weight:row.count})));
     if (!ui('distribution-heat').checked) heat.setMap(null);
-    if (!routes && root.MGPCSurveyRoutes) routes=root.MGPCSurveyRoutes.create({map,onSelect:focusRow});
+    if (!routes && root.MGPCSurveyRoutes) routes=root.MGPCSurveyRoutes.create({map,onSelect:focusRow,onTab:value=>{activeTab=value;syncLabels();}});
     routes?.setPlan(plan);
     fitArea();
   }
@@ -231,7 +238,7 @@
   ui('distribution-retry').addEventListener('click',open);
   ui('distribution-fit').addEventListener('click',fitArea);
   ui('distribution-download').addEventListener('click',download);
-  ui('distribution-labels').addEventListener('change',event=>labels.forEach(label=>label.setMap(event.target.checked?map:null)));
+  ui('distribution-labels').addEventListener('change',syncLabels);
   ui('distribution-heat').addEventListener('change',event=>heat?.setMap(event.target.checked?map:null));
   root.MGPCSurveyDistribution=Object.freeze({setResult,clear,open,buildPlan,interiorPoint});
 })(window);
