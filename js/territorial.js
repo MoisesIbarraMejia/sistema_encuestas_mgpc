@@ -93,6 +93,7 @@ function reviewGeometryInfo(geometry) {
   return {vertices,areaKm2};
 }
 function updateReviewButton() {
+  ['review-representante','review-contacto','review-solicitantes'].forEach(id => { document.getElementById(id).disabled = review.saving || review.completed; });
   const button = document.getElementById('btn-save-review');
   button.disabled = !review.bundle || !document.getElementById('review-confirm').checked || review.saving || review.completed;
   button.textContent = review.saving ? 'Guardando…' : review.pendingSave ? 'Conservar confirmación en esta pestaña' :
@@ -116,7 +117,7 @@ function renderFinalReview() {
     const scope = {
       division:'La muestra corresponde a la población de la UT que se propone dividir.',
       fusion:'La muestra corresponde al conjunto de UTs que integran la fusión propuesta.',
-      nomenclatura:'La muestra corresponde a la UT completa. Sus límites permanecen sin cambios.',
+      nomenclatura:'Se conserva el límite original. La revisión se registrará en el historial de ajustes con la geometría sin cambios.',
       inc_exc_secciones:'La muestra corresponde al territorio de las secciones incluidas o excluidas.',
       inc_exc_manzanas:'La muestra corresponde a la zona modificada entre el límite original y el propuesto.'
     };
@@ -194,6 +195,200 @@ function renderReviewMap() {
     };
   });
 }
+const RECEIPT_PURPLE = [75,46,131], RECEIPT_GREEN = [8,125,115], RECEIPT_INK = [34,34,40], RECEIPT_MUTED = [112,110,122], RECEIPT_LINE = [208,203,220];
+
+function receiptRings(geometry) {
+  if (!geometry) return [];
+  if (geometry.type === 'Polygon') return geometry.coordinates;
+  if (geometry.type === 'MultiPolygon') return geometry.coordinates.flat();
+  if (geometry.type === 'GeometryCollection') return geometry.geometries.flatMap(receiptRings);
+  return [];
+}
+function receiptMercator(lng, lat, zoom) {
+  const scale = 256 * Math.pow(2, zoom), sin = Math.sin(lat * Math.PI / 180);
+  return [(lng + 180) / 360 * scale, (0.5 - Math.log((1 + sin) / (1 - sin)) / (4 * Math.PI)) * scale];
+}
+// Zoom más cercano que deja todos los puntos dentro de width×height px (con margen) y el centro del encuadre.
+function receiptView(points, width, height, padding) {
+  const xs = points.map(p => p[0]), ys = points.map(p => p[1]);
+  const west = Math.min(...xs), east = Math.max(...xs), south = Math.min(...ys), north = Math.max(...ys);
+  let zoom = 19;
+  for (; zoom > 1; zoom--) {
+    const a = receiptMercator(west, north, zoom), b = receiptMercator(east, south, zoom);
+    if (b[0] - a[0] <= width - 2 * padding && b[1] - a[1] <= height - 2 * padding) break;
+  }
+  const a = receiptMercator(west, north, zoom), b = receiptMercator(east, south, zoom), scale = 256 * Math.pow(2, zoom);
+  const center = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+  return {zoom, center, lng:center[0] / scale * 360 - 180, lat:180 / Math.PI * Math.atan(Math.sinh(Math.PI * (1 - 2 * center[1] / scale)))};
+}
+function receiptImage(url, timeout = 8000) {
+  const controller = new AbortController(), timer = setTimeout(() => controller.abort(), timeout);
+  return fetch(url, {signal:controller.signal}).then(response => {
+      if (!response.ok) return response.text().then(body => { throw new Error('HTTP ' + response.status + (body ? ' - ' + body.slice(0,200) : '')); });
+    return response.blob();
+  }).then(blob => {
+    if (!/^image\//.test(blob.type)) throw new Error('Respuesta no válida');
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result); reader.onerror = () => reject(new Error('No se pudo leer la imagen'));
+      reader.readAsDataURL(blob);
+    });
+  }).finally(() => clearTimeout(timer));
+}
+
+async function downloadReviewReceipt(bundle, proposal) {
+  const jsPDF = window.jspdf && window.jspdf.jsPDF;
+  if (!jsPDF) throw new Error('No se pudo cargar el generador de PDF.');
+  const {context,draft} = bundle, nameOnly = context.caseType === 'nomenclatura', registro = proposal.registro || {};
+  const text = id => document.getElementById(id).textContent.trim();
+  const folioId = proposal.serverResponse && proposal.serverResponse.id;
+  const when = new Date(proposal.confirmedAt || Date.now()).toLocaleString('es-MX',{dateStyle:'long',timeStyle:'short'});
+  const original = receiptRings(draft.geometries.original), proposed = nameOnly ? [] : receiptRings(draft.geometries.proposed);
+  const points = original.concat(proposed).flat();
+
+  // Mapa base (Google Static Maps) y logo se piden en paralelo; si alguno falla el acuse se genera igual.
+  const MAP = {w:640,h:300};
+  const view = points.length ? receiptView(points, MAP.w, MAP.h, 46) : null;
+  const mapUrl = view && CONFIG.GOOGLE_MAPS_API_KEY ? 'https://maps.googleapis.com/maps/api/staticmap?center=' + view.lat.toFixed(6) + ',' + view.lng.toFixed(6) +
+    '&zoom=' + view.zoom + '&size=' + MAP.w + 'x' + MAP.h + '&scale=2&maptype=roadmap&language=es&region=MX' +
+    '&style=' + encodeURIComponent('feature:poi|visibility:off') + '&style=' + encodeURIComponent('feature:transit|visibility:off') +
+    '&key=' + encodeURIComponent(CONFIG.GOOGLE_MAPS_API_KEY) : null;
+  const [mapResult, logoResult] = await Promise.allSettled([mapUrl ? receiptImage(mapUrl) : Promise.reject(new Error('sin mapa')), receiptImage('img/logo-iecm.png',4000)]);
+  const mapImage = mapResult.status === 'fulfilled' ? mapResult.value : null;
+  const logoImage = logoResult.status === 'fulfilled' ? logoResult.value : null;
+
+  if (mapResult.status === 'rejected') console.warn('Acuse: no se pudo cargar el mapa base de Google.',mapResult.reason);
+  const mapReason = mapResult.status === 'fulfilled' ? '' : ' (' + (/^HTTP \d+/.exec(mapResult.reason.message) || [mapResult.reason.name === 'AbortError' ? 'tiempo agotado' : 'bloqueado o sin red'])[0] + ')';
+
+  const doc = new jsPDF({unit:'mm',format:'a4'}), L = 18, W = 174, R = L + W, BOTTOM = 270;
+  doc.setProperties({title:'Acuse de propuesta revisada ' + context.ut.key,subject:'Historial de ajustes de unidades territoriales',author:'MGPC'});
+  const ink = () => doc.setTextColor(...RECEIPT_INK), muted = () => doc.setTextColor(...RECEIPT_MUTED);
+  let y = 0;
+  const ensure = height => { if (y + height > BOTTOM) { doc.addPage(); y = 20; } };
+  const section = title => {
+    ensure(14); y += 4; doc.setFont('helvetica','bold'); doc.setFontSize(8.5); doc.setTextColor(...RECEIPT_PURPLE);
+    doc.text(title.toUpperCase(),L,y,{charSpace:0.4}); y += 1.8; doc.setDrawColor(...RECEIPT_LINE); doc.setLineWidth(0.3); doc.line(L,y,R,y); y += 5;
+  };
+  // Campos en columnas: etiqueta pequeña arriba, valor abajo.
+  const fields = (items, cols = 2) => {
+    const step = W / cols;
+    for (let i = 0; i < items.length; i += cols) {
+      const row = items.slice(i,i + cols).map(([label,value]) => ({label,lines:doc.splitTextToSize(String(value || '-'),step - 6)}));
+      const height = 4 + 4.6 * Math.max(...row.map(f => f.lines.length)) + 2.5; ensure(height);
+      row.forEach((f,col) => {
+        const x = L + col * step; doc.setFont('helvetica','normal'); doc.setFontSize(7); muted(); doc.text(f.label.toUpperCase(),x,y,{charSpace:0.2});
+        doc.setFontSize(10); ink(); doc.text(f.lines,x,y + 4.4);
+      });
+      y += height;
+    }
+  };
+
+  // Encabezado
+  if (logoImage) doc.addImage(logoImage,'PNG',L,12,38,18.2);
+  doc.setFont('helvetica','bold'); doc.setFontSize(13); doc.setTextColor(...RECEIPT_PURPLE); doc.text('ACUSE DE PROPUESTA REVISADA',R,19,{align:'right'});
+  doc.setFont('helvetica','normal'); doc.setFontSize(8.5); muted();
+  doc.text('Marco Geográfico de Participación Ciudadana',R,24.5,{align:'right'});
+  doc.text('Historial de ajustes de unidades territoriales',R,29,{align:'right'});
+  doc.setDrawColor(...RECEIPT_PURPLE); doc.setLineWidth(0.9); doc.line(L,34,R,34); doc.setLineWidth(0.25); doc.line(L,35.4,R,35.4);
+
+  // Folio y fecha
+  y = 42; doc.setDrawColor(...RECEIPT_LINE); doc.setLineWidth(0.3); doc.rect(L,y - 5,W,15); doc.line(L + 70,y - 5,L + 70,y + 10);
+  doc.setFontSize(7); muted(); doc.text('FOLIO DE REGISTRO',L + 4,y,{charSpace:0.2}); doc.text('FECHA Y HORA DE REGISTRO',L + 74,y,{charSpace:0.2});
+  doc.setFont('helvetica','bold'); doc.setFontSize(13); ink(); doc.text(folioId ? String(folioId) : 'Sin folio',L + 4,y + 7);
+  doc.setFontSize(10.5); doc.text(when,L + 74,y + 7); y += 14;
+
+  section('Datos del caso');
+  fields([
+    ['Distrito',String(context.district)],['Unidad territorial',context.ut.key + (context.ut.name ? ' - ' + context.ut.name : '')],
+    ['Tipo de caso',text('review-case')],['Superficie propuesta (km cuadrados)',proposal.areaKm2 ? proposal.areaKm2.toLocaleString('es-MX',{maximumFractionDigits:4}) : 'No aplica']
+  ]);
+  ensure(14); doc.setFont('helvetica','normal'); doc.setFontSize(7); muted(); doc.text('CAMBIOS PROPUESTOS',L,y,{charSpace:0.2});
+  doc.setFontSize(10); ink(); const changes = doc.splitTextToSize(text('review-changes') || 'Sin detalle adicional.',W); doc.text(changes,L,y + 4.4); y += 4.4 + 4.6 * changes.length + 2;
+
+  if (registro.representante_propuesta || registro.contacto_representante || registro.num_solicitantes != null) {
+    section('Quien presenta la propuesta');
+    fields([['Representante',registro.representante_propuesta],['Contacto',registro.contacto_representante],
+      ['Número de solicitantes',registro.num_solicitantes != null ? String(registro.num_solicitantes) : '']],3);
+  }
+
+  section('Alcance de la muestra');
+  ensure(22); const cells = [['Personas consideradas (N)',text('review-population')],['Encuestas requeridas (n)',text('review-sample')],['Método',text('review-method')]];
+  cells.forEach(([label,value],index) => {
+    const x = L + index * 58;
+    doc.setDrawColor(...RECEIPT_LINE); doc.setLineWidth(0.3); doc.rect(x,y,56,15);
+    doc.setFont('helvetica','normal'); doc.setFontSize(7); muted(); doc.text(label.toUpperCase(),x + 3,y + 4.8,{charSpace:0.2});
+    doc.setFont('helvetica','bold'); doc.setFontSize(11); ink(); doc.text(doc.splitTextToSize(value || '-',50)[0],x + 3,y + 11.5);
+  });
+  y += 18; const note = text('review-sample-note');
+  if (note) { doc.setFont('helvetica','normal'); doc.setFontSize(8); muted(); const noteLines = doc.splitTextToSize(note,W); doc.text(noteLines,L,y); y += 4 * noteLines.length; }
+
+  if (view) {
+    const height = W * MAP.h / MAP.w; ensure(height + 22); section('Croquis de ubicación');
+    const top = y;
+    if (mapImage) doc.addImage(mapImage,/^data:image\/jpe?g/.test(mapImage) ? 'JPEG' : 'PNG',L,top,W,height);
+    else { doc.setFillColor(244,243,247); doc.rect(L,top,W,height,'F'); }
+    const toMm = p => {
+      const px = receiptMercator(p[0],p[1],view.zoom);
+      return [L + (px[0] - (view.center[0] - MAP.w / 2)) * W / MAP.w, top + (px[1] - (view.center[1] - MAP.h / 2)) * W / MAP.w];
+    };
+    const draw = (rings,color,width,halo) => rings.forEach(ring => {
+      for (const [style,line] of [['halo',halo],['main',width]]) {
+        if (style === 'halo') doc.setDrawColor(255,255,255); else doc.setDrawColor(...color);
+        doc.setLineWidth(line);
+        for (let i = 1; i < ring.length; i++) { const a = toMm(ring[i - 1]), b = toMm(ring[i]); doc.line(a[0],a[1],b[0],b[1]); }
+      }
+    });
+    draw(original,RECEIPT_PURPLE,0.55,1.1); draw(proposed,RECEIPT_GREEN,0.55,1.1);
+    doc.setDrawColor(...RECEIPT_LINE); doc.setLineWidth(0.3); doc.rect(L,top,W,height);
+    y = top + height + 5; doc.setFont('helvetica','normal'); doc.setFontSize(8);
+    doc.setFillColor(...RECEIPT_PURPLE); doc.rect(L,y - 2.4,6,2.4,'F'); ink(); doc.text('Límite original',L + 8,y);
+    if (!nameOnly) { doc.setFillColor(...RECEIPT_GREEN); doc.rect(L + 38,y - 2.4,6,2.4,'F'); doc.text('Propuesta revisada',L + 46,y); }
+    muted(); doc.text(mapImage ? 'Mapa base: Google Maps' : 'Mapa base no disponible' + mapReason + '.',R,y,{align:'right'});
+  }
+
+  // Pie de página en todas las hojas
+  const pages = doc.getNumberOfPages();
+  for (let page = 1; page <= pages; page++) {
+    doc.setPage(page); doc.setDrawColor(...RECEIPT_LINE); doc.setLineWidth(0.3); doc.line(L,278,R,278);
+    doc.setFont('helvetica','normal'); doc.setFontSize(7.5); muted();
+    doc.text(doc.splitTextToSize('Este acuse constata el registro del ajuste en el historial; no sustituye el límite oficial de la unidad territorial. Generado automáticamente por el sistema MGPC.',140),L,282.5);
+    doc.text('Página ' + page + ' de ' + pages,R,282.5,{align:'right'});
+  }
+  doc.save('Acuse_MGPC_' + context.ut.key + '_' + (folioId || 'local') + '.pdf');
+}
+const REGISTRO_ESTADO = 'revisada';   // valor de historial_ajustes_ut.estado
+const SMALLINT_MAX = 32767;            // num_vertices es smallint(6)
+function sqlDateTime(date = new Date()) {
+  const p = n => String(n).padStart(2,'0');
+  return date.getFullYear() + '-' + p(date.getMonth() + 1) + '-' + p(date.getDate()) + ' ' + p(date.getHours()) + ':' + p(date.getMinutes()) + ':' + p(date.getSeconds());
+}
+function reviewRecord(bundle, metrics) {
+  const {context,draft,survey} = bundle, nameOnly = context.caseType === 'nomenclatura';
+  const clip = (value, max) => String(value == null ? '' : value).trim().slice(0, max);
+  const input = id => document.getElementById(id).value.trim();
+  const changes = document.getElementById('review-changes').textContent.trim();
+  const population = Number.isInteger(survey.sample.N) && survey.sample.N >= 0 ? survey.sample.N : Math.round(survey.N);
+  const record = {
+    cve_ut:clip(context.ut.key,50), distrito:clip(context.district,20),
+    tipo_modificacion:clip(CASE_LABELS[context.caseType] || context.caseType,100),
+    nombre_ut:clip(nameOnly ? (draft.newName || context.newName || context.ut.name || context.ut.key) : (context.ut.name || context.ut.key),150),
+    origen_propuesta:clip(context.caseId,150),
+    clasificacion_caso:clip(CASE_CLASSIFICATIONS[context.caseType] || context.caseType,100),
+    descripcion:(CASE_LABELS[context.caseType] || context.caseType) + (changes ? ': ' + changes : '.') +
+      ' Población (N): ' + population + '. Encuestas (n): ' + survey.sample.n + '. Método: ' + survey.sample.method + '.',
+    area_km2:Number(metrics.areaKm2.toFixed(4)), num_vertices:Math.min(metrics.vertices,SMALLINT_MAX),
+    fecha_registro:sqlDateTime(), usuario:clip(context.district,50), estado:REGISTRO_ESTADO
+  };
+  const representante = clip(input('review-representante'),150), contacto = clip(input('review-contacto'),150), solicitantes = input('review-solicitantes');
+  if (representante) record.representante_propuesta = representante;
+  if (contacto) record.contacto_representante = contacto;
+  if (solicitantes !== '') {
+    const count = Number(solicitantes);
+    if (!Number.isInteger(count) || count < 0) throw new Error('El número de solicitantes debe ser un entero mayor o igual a 0.');
+    record.num_solicitantes = count;
+  }
+  return record;
+}
 async function saveFinalReview() {
   if (review.saving || review.completed) return;
   const error = document.getElementById('review-error');
@@ -214,24 +409,20 @@ async function saveFinalReview() {
       throw new Error('La propuesta cambió mientras se guardaba. Revisa el historial antes de volver a confirmar.');
     }
     if (review.pendingSave) proposal = review.pendingSave.proposal;
-    else if (nameOnly) {
-      proposal = {status:'confirmed-local',kind:'nomenclatura',newName:draft.newName || context.newName || '',geometry:draft.geometries.proposed};
-    } else {
-      const metrics = reviewGeometryInfo(draft.geometries.proposed);
-      const properties = {
-        cve_ut:context.ut.key,distrito:String(context.district),clasificacion_caso:CASE_CLASSIFICATIONS[context.caseType] || context.caseType,
-        area_km2:metrics.areaKm2,num_vertices:metrics.vertices,usuario:String(context.district),
-        origen_propuesta:context.caseId == null ? '' : String(context.caseId)
-      };
+      else {
+      // Sin cambio de límites (nomenclatura) se envía la geometría original tal cual.
+      const geometry = nameOnly ? draft.geometries.original : draft.geometries.proposed;
+      const metrics = reviewGeometryInfo(geometry);
+      const properties = reviewRecord(bundle, metrics);
       const response = await fetch(proxyUrl(ENDPOINT_HISTORIAL_AJUSTES_WRITE,null,'escritura'), {
         method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({geometry:draft.geometries.proposed,properties})
+        body:JSON.stringify({geometry,properties})
       });
       const serverResponse = await readApiResponse(response);
       if (!Number.isInteger(Number(serverResponse.id)) || Number(serverResponse.id) <= 0) {
         throw new Error('La API no confirmó el folio del ajuste. Verifica el historial antes de intentar otro guardado.');
       }
-      proposal = {status:'saved',geometry:draft.geometries.proposed,areaKm2:metrics.areaKm2,registro:properties,serverResponse};
+      proposal = {status:'saved',kind:nameOnly ? 'nomenclatura' : undefined,newName:nameOnly ? (draft.newName || context.newName || '') : undefined,geometry,areaKm2:metrics.areaKm2,registro:properties,serverResponse};
       review.pendingSave = {identity,proposal};
     }
     if (reviewIdentity(reviewBundle()) !== identity) throw new Error('El caso cambió durante el guardado. Revisa la propuesta antes de continuar.');
@@ -239,7 +430,12 @@ async function saveFinalReview() {
       relatedUTs:draft.relatedUTs || [],sectionChanges:draft.sectionChanges || [],N:survey.N,sample:survey.sample};
     MGPCWorkflow.saveTerritorial({proposal});
     review.pendingSave = null;
+    let receiptNote = '';
+    status.textContent = 'Generando acuse PDF...';
+    try { await downloadReviewReceipt(bundle, proposal); }
+    catch (receiptError) { receiptNote = ' No se pudo generar el acuse PDF: ' + receiptError.message; }
     renderFinalReview();
+    if (receiptNote) document.getElementById('review-status').textContent += receiptNote;
   } catch (failure) {
     error.textContent = review.pendingSave
       ? 'El ajuste ya está registrado en la API, pero no se pudo conservar la confirmación en esta pestaña. ' + failure.message

@@ -8,6 +8,7 @@
   <link rel="stylesheet" href="css/territorial-shared.css?v=20261007-labels-1">
   <link rel="stylesheet" href="css/territorial.css?v=20261007-labels-1">
   <script src="https://unpkg.com/@turf/turf@6.5.0/turf.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 </head>
 <body class="territorial-page">
 <a class="skip-link" href="#ut-action-screen">Ir al contenido</a>
@@ -43,6 +44,12 @@
         <p class="metadata-note" id="review-analysis-date"></p>
       </section>
     </div>
+    <fieldset class="review-requester">
+      <legend>Datos de quien presenta la propuesta (opcional)</legend>
+      <label>Representante <input id="review-representante" type="text" maxlength="150" autocomplete="off"></label>
+      <label>Contacto del representante <input id="review-contacto" type="text" maxlength="150" autocomplete="off"></label>
+      <label>Número de solicitantes <input id="review-solicitantes" type="number" min="0" step="1" inputmode="numeric"></label>
+    </fieldset>
     <label class="review-confirmation"><input type="checkbox" id="review-confirm"> <span>Revisé los límites y el alcance de la muestra.</span></label>
     <div class="review-actions">
       <button class="btn btn-primary" id="btn-save-review" type="button" disabled>Guardar propuesta revisada</button>

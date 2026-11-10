@@ -44,10 +44,12 @@
   // vivo desde el panel "4. Parámetros de muestreo".
   // censusThreshold=100 es el umbral de censo mínimo de esa propuesta.
   SAMPLING: {
-    Z: 2.58,
+    // ANterior Z: 2.58,
+    Z: 1.96,  // Z para 95% de confianza (1.96) en lugar de 99% (2.58)
     p: 0.5,
     q: 0.5,
-    d: 0.05,
+    // Anterior d: 0.05,
+    d: 0.075,  // d=0.075 (7.5%) para poblaciones locales pequeñas
     censusThreshold: 100
   },
 

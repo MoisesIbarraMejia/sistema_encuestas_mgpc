@@ -30,3 +30,7 @@
 .review-outcome:empty { padding: 0; }
 @media (max-width: 850px) { .review-layout { grid-template-columns: 1fr; } .ut-action-card.review-shell { padding: 20px; } #review-map { height: 330px; } .review-actions .btn { flex: 1 1 180px; } }
 @media(max-width:600px) { #ut-action-screen { padding:20px 15px; } .ut-action-card { padding:23px; } .ut-action-title { font-size:23px; } }
+.review-requester { display: grid; gap: 10px; padding: 14px 16px; border: 1px solid var(--border); border-radius: 9px; margin: 0 0 12px; }
+.review-requester legend { padding: 0 6px; font-size: 13px; font-weight: 600; }
+.review-requester label { display: grid; gap: 4px; font-size: 13px; }
+.review-requester input { padding: 8px 10px; border: 1px solid var(--border); border-radius: 7px; font: inherit; }
