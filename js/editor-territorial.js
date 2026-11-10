@@ -230,6 +230,17 @@ function referenciasDeAjuste() {
     return MGPCSnapping.build(references);
 }
 
+function validarDentroDeOrigen(geometry) {
+    if (workflowContext?.caseType !== 'division' || !editorPoly.original) return;
+    const fuera = turf.difference(
+        {type:'Feature',properties:{},geometry},
+        {type:'Feature',properties:{},geometry:editorPoly.original}
+    );
+    if (fuera && turf.area(fuera) > 2) { // tolerancia 2 m²
+        throw new Error('La división no puede salir del límite de la UT origen.');
+    }
+}
+
 function finalizarEdicion() {
     const pending=editorSnap.pending;
     if (!pending) return true;
@@ -254,7 +265,7 @@ function finalizarEdicion() {
             } finally {editorSnap.mutating=false;}
         } else note='Sin referencia visible dentro de la distancia de ajuste. Se conserva tu posición.';
     }
-    try {ProposalChoices.validate(editorToGeometry());}
+    try {const g=editorToGeometry(); ProposalChoices.validate(g); validarDentroDeOrigen(g);}
     catch (error) {
         editorPoly.polygons=pending.before;
         editorPoly.cambios=JSON.stringify(editorToGeometry())!==JSON.stringify(editorPoly.guardado);
@@ -1492,6 +1503,7 @@ function sincronizarAnilloDesdeMapa(polygonIndex, ringIndex, path) {
    ============================================================ */
 
 function toggleModo() {
+    cancelarCuadrado();
     if (!manualCase) return;
     if (!finalizarEdicion()) return;
     if (obtenerTotalVertices() < 3) {
@@ -1534,6 +1546,108 @@ function toggleModo() {
 
     actualizar();
 }
+
+/* ===== División: zona nueva con 3 clics (recorta contra la UT origen) ===== */
+const cuadrado = {activo:false, pts:[], esq:null, preview:null, marks:[], capa:null, clickL:null, moveL:null};
+
+function cuadradoAMetros(p,o){const k=Math.cos(o.lat*Math.PI/180);return {x:(p.lng-o.lng)*111320*k,y:(p.lat-o.lat)*110540};}
+function cuadradoALatLng(m,o){const k=Math.cos(o.lat*Math.PI/180);return {lat:o.lat+m.y/110540,lng:o.lng+m.x/(111320*k)};}
+
+// P1 = inicio, P2 = orientación y largo del 1er lado, P3 = hasta dónde abarca.
+function esquinasCuadrado(p1,p2,p3){
+    const a=cuadradoAMetros(p2,p1), b=cuadradoAMetros(p3,p1);
+    const len=Math.hypot(a.x,a.y); if(len<1) return null;
+    const n={x:-a.y/len,y:a.x/len};
+    const d=b.x*n.x+b.y*n.y; if(Math.abs(d)<1) return null;
+    return [{x:0,y:0},a,{x:a.x+n.x*d,y:a.y+n.y*d},{x:n.x*d,y:n.y*d}].map(m=>cuadradoALatLng(m,p1));
+}
+
+function borrarTrazoCuadrado(){
+    cuadrado.preview?.setMap(null); cuadrado.preview=null;
+    cuadrado.marks.forEach(m=>m.setMap(null)); cuadrado.marks=[];
+    cuadrado.pts=[]; cuadrado.esq=null;
+}
+
+function salirModoCuadrado(){
+    borrarTrazoCuadrado();
+    if(cuadrado.clickL){google.maps.event.removeListener(cuadrado.clickL);cuadrado.clickL=null;}
+    if(cuadrado.moveL){google.maps.event.removeListener(cuadrado.moveL);cuadrado.moveL=null;}
+    cuadrado.capa?.setMap(null); cuadrado.capa=null;
+    cuadrado.activo=false;
+    const b=document.getElementById('btn-editor-cuadrado');
+    b.textContent='Dibujar zona nueva'; b.style.background='';
+    document.getElementById('btn-editor-modo').disabled=false;
+    dibujar();
+}
+function cancelarCuadrado(){ if(cuadrado.activo) salirModoCuadrado(); }
+
+function previsualizarCuadrado(latLng){
+    const p=cuadrado.pts;
+    if(!p.length||p.length===3) return;
+    const c={lat:latLng.lat(),lng:latLng.lng()};
+    const path=p.length===1?[p[0],c]:(esquinasCuadrado(p[0],p[1],c)||[p[0],p[1]]);
+    mostrarPreviewCuadrado(path);
+}
+function mostrarPreviewCuadrado(path){
+    if(!cuadrado.preview) cuadrado.preview=new google.maps.Polygon({map:editorPoly.map,clickable:false,strokeColor:'#d97706',strokeWeight:3,fillColor:'#d97706',fillOpacity:.18,zIndex:9998});
+    cuadrado.preview.setPath(path);
+}
+
+function clicCuadrado(latLng){
+    if(cuadrado.pts.length===3) borrarTrazoCuadrado();   // empieza otro cuadro
+    const pt={lat:latLng.lat(),lng:latLng.lng()};
+    cuadrado.pts.push(pt);
+    cuadrado.marks.push(new google.maps.Marker({map:editorPoly.map,position:pt,label:String(cuadrado.pts.length),clickable:false,zIndex:9999}));
+    if(cuadrado.pts.length===3){
+        const esq=esquinasCuadrado(...cuadrado.pts);
+        if(!esq){showToast('El cuadro quedó sin superficie. Intenta de nuevo.','warn');borrarTrazoCuadrado();return;}
+        cuadrado.esq=esq; mostrarPreviewCuadrado(esq);
+        showToast('Cuadro listo. Pulsa "Terminar zona nueva" para recortar, o dibuja otro para reemplazarlo.','info',6000);
+    }
+}
+
+function aplicarCuadrado(){
+    if(!cuadrado.esq){showToast('No se dibujó ninguna zona (faltan clics). Se salió del modo dibujo.','warn');salirModoCuadrado();return;}
+    const ring=cuadrado.esq.map(p=>[p.lng,p.lat]); ring.push(ring[0]);
+    let nueva=null;
+    try{nueva=turf.intersect(turf.polygon([ring]),{type:'Feature',properties:{},geometry:editorPoly.original});}catch(e){console.warn('[cuadrado] intersect',e);}
+    if(!nueva||turf.area(nueva)<1){showToast('La zona nueva no toca la UT origen. Dibuja de nuevo.','warn');borrarTrazoCuadrado();return;}
+    const prev=clonarPolygonsEditor();
+    geometryToEditor(nueva.geometry);            // recorte: cuadro ∩ UT origen
+    try{ProposalChoices.validate(editorToGeometry());}
+    catch(err){editorPoly.polygons=prev;salirModoCuadrado();showProposalError(err.message);return;}
+    commitHistorial();                           // permite "Deshacer"
+    editorPoly.cambios=true;
+    salirModoCuadrado();
+    actualizar();
+    showToast('Zona nueva aplicada (recortada con el límite de la UT origen).','info');
+}
+
+function iniciarModoCuadrado(){
+    if(!finalizarEdicion()) return;
+    if(editorPoly.editMode) toggleModo();        // desactiva la edición de puntos
+    cuadrado.activo=true;
+    document.getElementById('btn-editor-modo').disabled=true;
+    const b=document.getElementById('btn-editor-cuadrado');
+    b.textContent='Terminar zona nueva'; b.style.background='linear-gradient(135deg,#ef4444,#dc2626)';
+    editorPoly.mapPolygons.forEach(p=>p.setOptions({clickable:false,editable:false}));
+    // Capa transparente encima de todo: recibe los clics aunque haya capas de referencia debajo.
+    cuadrado.capa=new google.maps.Polygon({map:editorPoly.map,paths:[[{lat:-85,lng:-179.9},{lat:85,lng:-179.9},{lat:85,lng:179.9},{lat:-85,lng:179.9}]],
+        strokeWeight:0,fillColor:'#000',fillOpacity:0.001,clickable:true,zIndex:9997});
+    cuadrado.clickL=cuadrado.capa.addListener('click',e=>clicCuadrado(e.latLng));
+    cuadrado.moveL=cuadrado.capa.addListener('mousemove',e=>previsualizarCuadrado(e.latLng));
+    showToast('Clic 1: dónde empieza. Clic 2: orientación y largo del primer lado. Clic 3: hasta dónde abarca.','info',8000);
+}
+
+// Delegación sobre document: funciona aunque el botón se haya re-renderizado.
+document.addEventListener('click',e=>{
+    const btn=e.target.closest('#btn-editor-cuadrado');
+    if(!btn) return;
+    console.log('[cuadrado] botón presionado. activo =',cuadrado.activo);
+    try{ cuadrado.activo ? aplicarCuadrado() : iniciarModoCuadrado(); }
+    catch(err){ console.error('[cuadrado] error',err); showToast('Error en dibujo de zona: '+err.message,'warn'); }
+});
+document.addEventListener('keydown',e=>{ if(e.key==='Escape') cancelarCuadrado(); });
 
 /* ============================================================
    REVERTIR
@@ -1911,6 +2025,8 @@ document.getElementById('btn-volver-poligono').addEventListener('click', cerrarE
 
 document.getElementById('btn-editor-modo').addEventListener('click', toggleModo);
 
+document.getElementById('btn-editor-modo').addEventListener('click', toggleModo);
+
 document.getElementById('btn-editor-revert').addEventListener('click', revertir);
 
 document.getElementById('btn-editor-save').addEventListener('click', guardar);
@@ -1979,6 +2095,7 @@ function setupProposalUI() {
     document.getElementById('editor-survey-summary').textContent=caseInfo.instruction || (manualCase ? 'Mueve los puntos para definir cómo cambiará el límite. Después calcularemos la muestra.' : 'Elige las zonas de la propuesta. El mapa mostrará cómo quedan los nuevos límites.');
     document.getElementById('proposal-step-one').textContent=manualCase?'Mueve los puntos del límite':workflowContext.caseType==='fusion'?'Elige las UT que se unirán':'Elige las secciones que cambiarán';
     document.getElementById('btn-editor-modo').hidden=!manualCase;
+    document.getElementById('btn-editor-cuadrado').hidden = workflowContext.caseType!=='division';
     document.getElementById('editor-snap-controls').hidden=!manualCase;
     document.getElementById('btn-editor-save').disabled=true;
 }
